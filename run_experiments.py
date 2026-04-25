@@ -1,5 +1,6 @@
 import argparse
 import json
+from datetime import datetime
 from pathlib import Path
 import random
 
@@ -10,7 +11,12 @@ from src.ebie import algoritmo_genetico
 from src.experiment_utils import set_global_seed
 from src.hill import hill_climbing
 from src.initialization import generate_initial_population
-from src.metrics import summarize_generation_metrics, summarize_run, summarize_runs
+from src.metrics import (
+    summarize_evaluation_metrics,
+    summarize_generation_metrics,
+    summarize_run,
+    summarize_runs,
+)
 from src.random_search import random_search
 from src.resources import load_resources
 
@@ -125,8 +131,30 @@ def execute_single_run(algorithm_name, resources, config):
 def save_payload(output_file, payload):
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as file:
+    temp_path = output_path.with_name(f"{output_path.name}.tmp")
+    with temp_path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, indent=2)
+    temp_path.replace(output_path)
+
+
+def build_payload(run_config, algorithm_name, decoder_config, runs_payload, run_summaries, seeds, status):
+    return {
+        "algorithm": algorithm_name,
+        "decoder": decoder_config,
+        "initialization_mode": run_config["initialization_mode"],
+        "experiment_name": run_config.get("experiment_name"),
+        "config": serialize_run_config(run_config),
+        "success_target_score": run_config["success_target_score"],
+        "progress": {
+            "status": status,
+            "completed_runs": len(runs_payload),
+            "total_runs": len(seeds),
+            "completed_seeds": [run["seed"] for run in runs_payload],
+            "last_updated_at": datetime.now().isoformat(timespec="seconds"),
+        },
+        "runs": runs_payload,
+        "summary": summarize_runs(run_summaries),
+    }
 
 
 def main():
@@ -152,27 +180,43 @@ def main():
                     history,
                     run_config["success_target_score"],
                 )
+                evaluation_metrics = summarize_evaluation_metrics(
+                    history,
+                    run_config["success_target_score"],
+                )
                 runs_payload.append(
                     {
                         "seed": seed,
                         "config": serialize_run_config(run_config),
                         "history": history,
                         "generation_metrics": generation_metrics,
+                        "evaluation_metrics": evaluation_metrics,
                         "metrics": run_summary,
                     }
                 )
                 run_summaries.append(run_summary)
+                save_payload(
+                    output_file,
+                    build_payload(
+                        run_config,
+                        algorithm_name,
+                        decoder_config,
+                        runs_payload,
+                        run_summaries,
+                        seeds,
+                        status="running",
+                    ),
+                )
 
-            payload = {
-                "algorithm": algorithm_name,
-                "decoder": decoder_config,
-                "initialization_mode": run_config["initialization_mode"],
-                "experiment_name": run_config.get("experiment_name"),
-                "config": serialize_run_config(run_config),
-                "success_target_score": run_config["success_target_score"],
-                "runs": runs_payload,
-                "summary": summarize_runs(run_summaries),
-            }
+            payload = build_payload(
+                run_config,
+                algorithm_name,
+                decoder_config,
+                runs_payload,
+                run_summaries,
+                seeds,
+                status="completed",
+            )
             save_payload(output_file, payload)
 
 

@@ -9,14 +9,23 @@ from pathlib import Path
 import yaml
 
 
-STAGE1_GRID = {
-    "populacao_inicial": [50, 100, 200],
-    "num_geracoes": [300],
-    "prob_mutacao_embedding": [0.1, 0.2, 0.4],
-    "mutation_intensity_percent": [0.05, 0.10, 0.20],
-    "prob_crossover_embedding": [0.5, 0.8, 0.95],
-}
+# STAGE1_GRID = {
+#     "populacao_inicial": [50, 100, 200],
+#     "num_geracoes": [300],
+#     "prob_mutacao_embedding": [0.1, 0.2, 0.4],
+#     "mutation_intensity_percent": [0.05, 0.10, 0.20],
+#     # "prob_crossover_embedding": [0.5, 0.8, 0.95],
+#     "prob_crossover_embedding": [0.8],
+# }
 
+STAGE1_GRID = {
+    "populacao_inicial": [10],
+    "num_geracoes": [20],
+    "prob_mutacao_embedding": [0.1, 0.2],
+    "mutation_intensity_percent": [0.05],
+    # "prob_crossover_embedding": [0.5, 0.8, 0.95],
+    "prob_crossover_embedding": [0.8],
+}
 
 def load_config(config_path):
     with Path(config_path).open("r", encoding="utf-8") as file:

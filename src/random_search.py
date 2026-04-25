@@ -4,6 +4,7 @@ import torch
 
 import src.decoder as decoder
 from src.ebie import avaliar_sentimento, mutacao_embeddings, remover_token
+from src.resources import tokenize_for_roberta
 
 
 def gerar_variacao_sem_avaliacao(
@@ -11,7 +12,7 @@ def gerar_variacao_sem_avaliacao(
     config,
     frase,
 ):
-    inputs = resources.tokenizer(frase, return_tensors="pt").to(resources.device)
+    inputs = tokenize_for_roberta(resources, frase)
     with torch.no_grad():
         outputs = resources.model.roberta(**inputs)
         embeddings = outputs.last_hidden_state

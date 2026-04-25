@@ -5,6 +5,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.decoder import decode_com_top_k
+from src.resources import tokenize_for_roberta
 
 
 _LLM_CACHE = {}
@@ -17,10 +18,7 @@ def _get_embedding_stats(resources, config):
         return _EMBEDDING_STATS_CACHE[cache_key]
 
     with torch.no_grad():
-        inputs = resources.tokenizer(
-            config["sample_sentence"],
-            return_tensors="pt",
-        ).to(resources.device)
+        inputs = tokenize_for_roberta(resources, config["sample_sentence"])
         outputs = resources.model.roberta(**inputs)
         mean_embedding = outputs.last_hidden_state.mean(dim=1).mean(dim=0)
         std_embedding = outputs.last_hidden_state.std(dim=1).mean(dim=0)

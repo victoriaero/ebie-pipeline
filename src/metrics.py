@@ -17,6 +17,13 @@ def flatten_candidates(history):
     return candidates
 
 
+def iter_candidates_with_generation(history):
+    for generation_name, generation_data in sorted(history.items(), key=_generation_sort_key):
+        candidates = generation_data.get("all_candidates", generation_data.get("top_5", []))
+        for candidate in candidates:
+            yield generation_name, candidate
+
+
 def lexical_diversity(candidates):
     tokens = []
     for candidate in candidates:
@@ -84,6 +91,61 @@ def summarize_generation_metrics(history, target_score):
         )
 
     return generation_summaries
+
+
+def summarize_evaluation_metrics(history, target_score):
+    evaluation_summaries = []
+    best_fitness_so_far = None
+    evaluations_to_target_so_far = None
+
+    candidates_with_generation = sorted(
+        iter_candidates_with_generation(history),
+        key=lambda item: (
+            item[1].get("evaluation_index_descendente", math.inf),
+            item[0],
+        ),
+    )
+
+    for generation_name, candidate in candidates_with_generation:
+        evaluation_index = candidate.get("evaluation_index_descendente")
+        score = candidate.get("score_descendente")
+
+        if score is not None:
+            if best_fitness_so_far is None:
+                best_fitness_so_far = score
+            else:
+                best_fitness_so_far = max(best_fitness_so_far, score)
+
+        if (
+            target_score is not None
+            and evaluations_to_target_so_far is None
+            and score is not None
+            and score >= target_score
+        ):
+            evaluations_to_target_so_far = evaluation_index
+
+        evaluation_summaries.append(
+            {
+                "evaluation": evaluation_index,
+                "generation": generation_name,
+                "score": score,
+                "best_fitness_so_far": best_fitness_so_far,
+                "success_evaluation": (
+                    score >= target_score
+                    if target_score is not None and score is not None
+                    else None
+                ),
+                "success_so_far": (
+                    best_fitness_so_far >= target_score
+                    if target_score is not None and best_fitness_so_far is not None
+                    else None
+                ),
+                "evaluations_to_target_so_far": evaluations_to_target_so_far,
+                "tokens_descendente": candidate.get("tokens_descendente"),
+            }
+        )
+
+    return evaluation_summaries
 
 
 def summarize_run(history, target_score):

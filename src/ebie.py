@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import src.decoder as decoder
+from src.resources import tokenize_for_roberta
 
 
 def _get_mutation_magnitude(config, token_embedding):
@@ -64,7 +65,7 @@ def remover_token(embeddings):
 
 
 def gerar_variacao(resources, config, frase):
-    inputs = resources.tokenizer(frase, return_tensors="pt").to(resources.device)
+    inputs = tokenize_for_roberta(resources, frase)
     with torch.no_grad():
         outputs = resources.model.roberta(**inputs)
         embeddings = outputs.last_hidden_state
@@ -129,8 +130,8 @@ def torneio(populacao, fitness, tamanho=2):
 
 def crossover(resources, config, frase1, frase2):
     if random.random() < config["prob_crossover_embedding"]:
-        inputs1 = resources.tokenizer(frase1, return_tensors="pt").to(resources.device)
-        inputs2 = resources.tokenizer(frase2, return_tensors="pt").to(resources.device)
+        inputs1 = tokenize_for_roberta(resources, frase1)
+        inputs2 = tokenize_for_roberta(resources, frase2)
         with torch.no_grad():
             outputs1 = resources.model.roberta(**inputs1)
             outputs2 = resources.model.roberta(**inputs2)
