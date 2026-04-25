@@ -1,0 +1,61 @@
+initialization_mode: random_1_token
+llm_initialization_model: meta-llama/Llama-3.1-8B-Instruct
+llm_initialization_target_class: positive sentiment
+llm_initialization_num_words: 3
+llm_initialization_max_new_tokens: 32
+
+run_decoder_ablation: true
+decoder_include_baseline: true
+decoder_config_name: current_decoder
+decoder_family: lm_head
+decoder_strategy: weighted_sampling
+decoder_top_k: 50
+decoder_similarity: dot_product
+filter_special_tokens: true
+decoder_ablation_top_ks:
+  - 10
+  - 50
+  - 100
+decoder_ablation_strategies:
+  - argmax
+  - weighted_sampling
+success_target_score: 0.9
+experiment_seeds:
+  - 0
+  - 1
+  - 2
+
+algorithms:
+  - genetic
+  - hill_climbing
+  - cma_es
+  - random_search
+
+num_execucoes: 1
+num_geracoes: 200
+populacao_inicial: 100
+hill_climbing_neighbors: 100
+cma_es_population_size: 32
+cma_es_sigma: 0.5
+cma_es_elite_ratio: 0.5
+cma_es_cov_eps: 1.0e-6
+random_search_classifier_evals: 100
+random_search_batch_size: 10
+perturbacao_magnitude: 64
+prob_add_random_token: 0.3
+prob_remover_token: 0.3
+top_k: 100
+speedup_factor: 50
+
+prob_crossover_embedding: 0.8
+prob_mutacao_embedding: 0.2
+max_percent_dimensions_crossover: 0.02
+tournament_size: 2
+
+roberta_model_name: roberta-large
+emotion_model_name: distilbert/distilbert-base-uncased-finetuned-sst-2-english
+sample_sentence: "This is a sample sentence for computing embedding statistics."
+
+output_file: historico_completo2.json
+random_seed:
+use_gpu_if_available: true
