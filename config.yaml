@@ -4,7 +4,7 @@ llm_initialization_target_class: positive sentiment
 llm_initialization_num_words: 3
 llm_initialization_max_new_tokens: 32
 
-run_decoder_ablation: true
+run_decoder_ablation: false
 decoder_include_baseline: true
 decoder_config_name: current_decoder
 decoder_family: lm_head
@@ -24,15 +24,17 @@ experiment_seeds:
   - 0
   - 1
   - 2
+  - 3
+  - 4
 
 algorithms:
   - genetic
-  - hill_climbing
-  - cma_es
-  - random_search
+  # - hill_climbing
+  # - cma_es
+  # - random_search
 
 num_execucoes: 1
-num_geracoes: 200
+num_geracoes: 300
 populacao_inicial: 100
 hill_climbing_neighbors: 100
 cma_es_population_size: 32
@@ -56,6 +58,7 @@ roberta_model_name: roberta-large
 emotion_model_name: distilbert/distilbert-base-uncased-finetuned-sst-2-english
 sample_sentence: "This is a sample sentence for computing embedding statistics."
 
-output_file: historico_completo2.json
+output_file: historico_completo.json
 random_seed:
 use_gpu_if_available: true
+experiment_name: etapa1_base

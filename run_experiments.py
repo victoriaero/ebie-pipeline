@@ -1,6 +1,8 @@
-from pathlib import Path
-
+import argparse
 import json
+from pathlib import Path
+import random
+
 import yaml
 
 from src.cma_es import cma_es
@@ -8,7 +10,7 @@ from src.ebie import algoritmo_genetico
 from src.experiment_utils import set_global_seed
 from src.hill import hill_climbing
 from src.initialization import generate_initial_population
-from src.metrics import summarize_run, summarize_runs
+from src.metrics import summarize_generation_metrics, summarize_run, summarize_runs
 from src.random_search import random_search
 from src.resources import load_resources
 
@@ -23,8 +25,33 @@ def load_config(config_path="config.yaml"):
 
 def build_output_path(config, algorithm_name, decoder_name):
     output_path = (config["_base_dir"] / config["output_file"]).resolve()
-    suffix = f"{output_path.stem}_{algorithm_name}_{decoder_name}{output_path.suffix}"
+    experiment_name = config.get("experiment_name")
+    if experiment_name:
+        suffix = (
+            f"{output_path.stem}_{algorithm_name}_{decoder_name}_{experiment_name}"
+            f"{output_path.suffix}"
+        )
+    else:
+        suffix = f"{output_path.stem}_{algorithm_name}_{decoder_name}{output_path.suffix}"
     return str(output_path.with_name(suffix))
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run EBIE experiments from a YAML config.")
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to the YAML configuration file.",
+    )
+    return parser.parse_args()
+
+
+def serialize_run_config(run_config):
+    return {
+        key: value
+        for key, value in run_config.items()
+        if not key.startswith("_")
+    }
 
 
 def get_decoder_configs(config):
@@ -103,7 +130,8 @@ def save_payload(output_file, payload):
 
 
 def main():
-    config = load_config()
+    args = parse_args()
+    config = load_config(args.config)
     resources = load_resources(config)
     decoder_configs = get_decoder_configs(config)
     seeds = get_experiment_seeds(config)
@@ -120,10 +148,16 @@ def main():
                 set_global_seed(seed)
                 history = execute_single_run(algorithm_name, resources, run_config)
                 run_summary = summarize_run(history, run_config["success_target_score"])
+                generation_metrics = summarize_generation_metrics(
+                    history,
+                    run_config["success_target_score"],
+                )
                 runs_payload.append(
                     {
                         "seed": seed,
+                        "config": serialize_run_config(run_config),
                         "history": history,
+                        "generation_metrics": generation_metrics,
                         "metrics": run_summary,
                     }
                 )
@@ -133,6 +167,8 @@ def main():
                 "algorithm": algorithm_name,
                 "decoder": decoder_config,
                 "initialization_mode": run_config["initialization_mode"],
+                "experiment_name": run_config.get("experiment_name"),
+                "config": serialize_run_config(run_config),
                 "success_target_score": run_config["success_target_score"],
                 "runs": runs_payload,
                 "summary": summarize_runs(run_summaries),

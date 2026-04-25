@@ -1,2 +1,5 @@
 __pycache__/*
 scr/__pycache__/*
+generated_configs/*
+outputs/*
+venv/*

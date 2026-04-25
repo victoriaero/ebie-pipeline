@@ -9,8 +9,8 @@ class ModelResources:
     device: torch.device
     tokenizer: object
     model: object
-    emotion_tokenizer: object
-    emotion_model: object
+    classifier_tokenizer: object
+    classifier_model: object
 
 
 def load_resources(config):
@@ -23,16 +23,18 @@ def load_resources(config):
     model = RobertaForMaskedLM.from_pretrained(config["roberta_model_name"]).to(device)
     model.eval()
 
-    emotion_tokenizer = AutoTokenizer.from_pretrained(config["emotion_model_name"])
-    emotion_model = AutoModelForSequenceClassification.from_pretrained(
-        config["emotion_model_name"]
+    classifier_model_name = config.get("classifier_model_name", config.get("emotion_model_name"))
+
+    classifier_tokenizer = AutoTokenizer.from_pretrained(classifier_model_name)
+    classifier_model = AutoModelForSequenceClassification.from_pretrained(
+        classifier_model_name
     ).to(device)
-    emotion_model.eval()
+    classifier_model.eval()
 
     return ModelResources(
         device=device,
         tokenizer=tokenizer,
         model=model,
-        emotion_tokenizer=emotion_tokenizer,
-        emotion_model=emotion_model,
+        classifier_tokenizer=classifier_tokenizer,
+        classifier_model=classifier_model,
     )

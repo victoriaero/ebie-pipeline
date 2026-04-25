@@ -9,13 +9,22 @@ from tqdm import tqdm
 import src.decoder as decoder
 
 
+def _get_mutation_magnitude(config, token_embedding):
+    if "mutation_intensity_percent" in config:
+        rms_magnitude = token_embedding.pow(2).mean().sqrt().item()
+        return max(rms_magnitude * config["mutation_intensity_percent"], 1.0e-8)
+
+    return config["perturbacao_magnitude"]
+
+
 def avaliar_sentimento(resources, config, frases):
     batch_size = config["speedup_factor"]
+    classifier_target_label = config.get("classifier_target_label", 0)
     dataset = DataLoader(frases, batch_size=batch_size, shuffle=False)
     resultados = []
 
     for batch in dataset:
-        inputs = resources.emotion_tokenizer(
+        inputs = resources.classifier_tokenizer(
             batch,
             return_tensors="pt",
             truncation=True,
@@ -24,10 +33,10 @@ def avaliar_sentimento(resources, config, frases):
         )
         inputs = {key: value.to(resources.device) for key, value in inputs.items()}
         with torch.no_grad():
-            outputs = resources.emotion_model(**inputs)
+            outputs = resources.classifier_model(**inputs)
             scores = torch.nn.functional.softmax(outputs.logits, dim=1)
-            alegria_scores = scores[:, 0].cpu().tolist()
-        resultados.extend(alegria_scores)
+            target_scores = scores[:, classifier_target_label].cpu().tolist()
+        resultados.extend(target_scores)
 
     return resultados
 
@@ -35,12 +44,13 @@ def avaliar_sentimento(resources, config, frases):
 def mutacao_embeddings(resources, config, embeddings):
     for i in range(embeddings.shape[1]):
         if random.random() < config["prob_mutacao_embedding"]:
+            perturbacao_magnitude = _get_mutation_magnitude(config, embeddings[0, i])
             perturbacao = torch.randn(embeddings[0, i].shape).to(resources.device)
             perturbacao *= (
                 torch.rand(embeddings[0, i].shape).to(resources.device)
                 * 2
-                * config["perturbacao_magnitude"]
-                - config["perturbacao_magnitude"]
+                * perturbacao_magnitude
+                - perturbacao_magnitude
             )
             embeddings[0, i] += perturbacao
     return embeddings
@@ -72,9 +82,10 @@ def gerar_variacao(resources, config, frase):
         novos_embeddings = remover_token(novos_embeddings)
     else:
         idx = random.randint(0, novos_embeddings.shape[1] - 1)
+        base_perturbacao_magnitude = _get_mutation_magnitude(config, novos_embeddings[0, idx])
         descendente_perturbacao_magnitude = random.uniform(
-            0.5 * config["perturbacao_magnitude"],
-            1.5 * config["perturbacao_magnitude"],
+            0.5 * base_perturbacao_magnitude,
+            1.5 * base_perturbacao_magnitude,
         )
         perturbacao = torch.randn(novos_embeddings[0, idx].shape).to(resources.device)
         perturbacao *= (
