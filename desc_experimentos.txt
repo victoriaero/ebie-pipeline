@@ -1,0 +1,68 @@
+EBIE
+
+Etapa 1 — centrais
+população: 50, 100, 200
+gerações: 100, 200, 300*
+prob. mutação: 0.1, 0.2, 0.4
+intensidade da mutação: 5%, 10%, 20%
+prob. crossover: 0.5, 0.8, 0.95
+Etapa 2 — operadores de tamanho
+rodar com a melhor config de 1.
+add token: 0.1, 0.3, 0.5
+remove token: 0.1, 0.3, 0.5
+Etapa 3 — reconstrução
+top-k: 10, 50, 100
+estratégia de escolha: argmax vs weighted sampling
+inicializações;
+
+Ablação de inicialização e decoder serão feitas posteriormente.
+
+HILL
+
+Etapa 1
+
+Fixe:
+
+neighbors = 5
+sem restart
+
+Teste:
+
+step size = 5%, 10%, 20%
+Etapa 2
+
+Pegue o melhor step size e teste:
+
+sem restart
+com restart
+Etapa 3
+
+Se ainda quiser refinar, teste:
+
+neighbors = 1, 5, 10.
+
+Ablação de inicialização e decoder serão feitas posteriormente.
+
+RANDOM
+
+Sem seleção de hiperparâmetros. Ablação de inicialização e decoder serão feitas posteriormente.
+
+CMA-ES:
+
+Etapa 1
+
+Fixe: inicialização random 1 token
+
+Teste:
+
+população = 20, 50, 100
+sigma = 0.05, 0.1, 0.2
+
+Etapa 2
+
+Pegue as 2 melhores configurações e teste:
+
+random 1 token
+random 3 tokens
+
+Escolha a melhor finalista. Ablação de inicialização e decoder serão feitas posteriormente.
