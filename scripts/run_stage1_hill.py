@@ -1,4 +1,3 @@
-import itertools
 import json
 import subprocess
 import sys
@@ -9,53 +8,32 @@ from pathlib import Path
 import yaml
 
 
-STAGE1_GRID = {
-    "populacao_inicial": [50, 100, 200],
-    "num_geracoes": [300],
-    "prob_mutacao_embedding": [0.1, 0.2, 0.4],
-    "mutation_intensity_percent": [0.05, 0.10, 0.20],
-    # "prob_crossover_embedding": [0.5, 0.8, 0.95],
-    "prob_crossover_embedding": [0.8],
-}
+STAGE1_STEP_SIZES = [0.05, 0.10, 0.20]
+FIXED_NEIGHBORS = 5
+FIXED_RESTART = False
 
-# STAGE1_GRID = {
-#     "populacao_inicial": [10],
-#     "num_geracoes": [20],
-#     "prob_mutacao_embedding": [0.1, 0.2],
-#     "mutation_intensity_percent": [0.05],
-#     # "prob_crossover_embedding": [0.5, 0.8, 0.95],
-#     "prob_crossover_embedding": [0.8],
-# }
 
 def load_config(config_path):
     with Path(config_path).open("r", encoding="utf-8") as file:
         return yaml.safe_load(file) or {}
 
 
-def slugify(value):
-    return str(value).replace(".", "p")
-
-
 def build_experiment_name(index, config):
     return (
-        f"stage1_{index:03d}"
-        f"_pop{config['populacao_inicial']}"
-        f"_gen{config['num_geracoes']}"
-        f"_pmut{slugify(config['prob_mutacao_embedding'])}"
-        f"_mint{int(config['mutation_intensity_percent'] * 100)}"
-        f"_pcross{slugify(config['prob_crossover_embedding'])}"
+        f"hill_stage1_{index:03d}"
+        f"_step{int(config['mutation_intensity_percent'] * 100)}"
+        f"_neighbors{config['hill_climbing_neighbors']}"
+        f"_restart{int(bool(config['hill_climbing_restart']))}"
     )
 
 
 def generate_stage1_configs(base_config):
-    keys = list(STAGE1_GRID.keys())
-    values = [STAGE1_GRID[key] for key in keys]
-
-    for index, combination in enumerate(itertools.product(*values), start=1):
+    for index, step_size in enumerate(STAGE1_STEP_SIZES, start=1):
         config = deepcopy(base_config)
-        for key, value in zip(keys, combination, strict=True):
-            config[key] = value
-
+        config["algorithms"] = ["hill_climbing"]
+        config["hill_climbing_neighbors"] = FIXED_NEIGHBORS
+        config["hill_climbing_restart"] = FIXED_RESTART
+        config["mutation_intensity_percent"] = step_size
         config["experiment_name"] = build_experiment_name(index, config)
         yield config
 
@@ -82,9 +60,9 @@ def main():
     base_config = load_config(base_config_path)
     run_timestamp = build_run_timestamp()
 
-    generated_configs_dir = repo_root / "generated_configs" / "stage1" / run_timestamp
-    outputs_dir = repo_root / "outputs" / "stage1" / run_timestamp
-    manifest_path = outputs_dir / "manifest_stage1.json"
+    generated_configs_dir = repo_root / "generated_configs" / "hill_stage1" / run_timestamp
+    outputs_dir = repo_root / "outputs" / "hill_stage1" / run_timestamp
+    manifest_path = outputs_dir / "manifest_hill_stage1.json"
     manifest = []
 
     for config in generate_stage1_configs(base_config):
@@ -100,11 +78,10 @@ def main():
                 "config_path": str(config_path),
                 "output_file": config["output_file"],
                 "parameters": {
-                    "populacao_inicial": config["populacao_inicial"],
-                    "num_geracoes": config["num_geracoes"],
-                    "prob_mutacao_embedding": config["prob_mutacao_embedding"],
+                    "algorithm": "hill_climbing",
                     "mutation_intensity_percent": config["mutation_intensity_percent"],
-                    "prob_crossover_embedding": config["prob_crossover_embedding"],
+                    "hill_climbing_neighbors": config["hill_climbing_neighbors"],
+                    "hill_climbing_restart": config["hill_climbing_restart"],
                 },
             }
         )
@@ -120,4 +97,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

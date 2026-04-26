@@ -26,6 +26,10 @@ def _get_scores_from_lm_head(resources, token_embedding):
     return resources.model.lm_head(token_embedding.unsqueeze(0).unsqueeze(0))[0, 0]
 
 
+def _get_scores_from_lm_head_sequence(resources, embeddings):
+    return resources.model.lm_head(embeddings)[0]
+
+
 def _get_scores_from_embedding_similarity(resources, token_embedding, similarity):
     embedding_matrix = resources.model.get_input_embeddings().weight
 
@@ -53,11 +57,22 @@ def _select_token_id(resources, scores, strategy, top_k, filter_special_tokens):
 
 
 def decode_embeddings_to_token_ids(resources, config, embeddings):
+    if config["decoder_family"] == "lm_head":
+        sequence_scores = _get_scores_from_lm_head_sequence(resources, embeddings)
+        return [
+            _select_token_id(
+                resources,
+                scores,
+                config["decoder_strategy"],
+                config["decoder_top_k"],
+                config["filter_special_tokens"],
+            )
+            for scores in sequence_scores
+        ]
+
     token_ids = []
     for token_embedding in embeddings[0]:
-        if config["decoder_family"] == "lm_head":
-            scores = _get_scores_from_lm_head(resources, token_embedding)
-        elif config["decoder_family"] == "embedding_similarity":
+        if config["decoder_family"] == "embedding_similarity":
             scores = _get_scores_from_embedding_similarity(
                 resources,
                 token_embedding,
