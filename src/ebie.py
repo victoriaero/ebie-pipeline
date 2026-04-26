@@ -98,11 +98,7 @@ def gerar_variacao(resources, config, frase):
         novos_embeddings[0, idx] += perturbacao
 
     nova_frase = decoder.decode_embeddings_to_text(resources, config, novos_embeddings)
-    return (
-        nova_frase,
-        avaliar_sentimento(resources, config, [frase])[0],
-        avaliar_sentimento(resources, config, [nova_frase])[0],
-    )
+    return nova_frase
 
 
 def crossover_embeddings(config, pai1_embedding, pai2_embedding):
@@ -125,7 +121,7 @@ def crossover_embeddings(config, pai1_embedding, pai2_embedding):
 def torneio(populacao, fitness, tamanho=2):
     selecionados = random.sample(range(len(populacao)), tamanho)
     melhor = max(selecionados, key=lambda idx: fitness[idx])
-    return populacao[melhor]
+    return melhor
 
 
 def crossover(resources, config, frase1, frase2):
@@ -157,28 +153,42 @@ def algoritmo_genetico(resources, config, populacao):
     for geracao in tqdm(range(config["num_geracoes"]), desc="Evoluindo"):
         populacao_copy = copy.deepcopy(populacao)
         fitness = avaliar_sentimento(resources, config, populacao_copy)
+        parent_evaluation_offset = evaluations_count
+        evaluations_count += len(populacao)
         nova_populacao = []
         descendentes_info = []
 
         while len(nova_populacao) < len(populacao):
-            pai1 = torneio(populacao, fitness, config["tournament_size"])
-            pai2 = torneio(populacao, fitness, config["tournament_size"])
+            pai1_idx = torneio(populacao, fitness, config["tournament_size"])
+            pai2_idx = torneio(populacao, fitness, config["tournament_size"])
+            pai1 = populacao[pai1_idx]
+            pai2 = populacao[pai2_idx]
             descendente = crossover(resources, config, pai1, pai2)
-            nova_frase, score_pai1, score_descendente = gerar_variacao(resources, config, descendente)
+            nova_frase = gerar_variacao(resources, config, descendente)
 
-            descendentes_info.append({
-                "descendente": nova_frase,
-                "score_descendente": score_descendente,
-                "tokens_descendente": len(resources.tokenizer.tokenize(nova_frase)),
-                "pai1": pai1,
-                "score_pai1": score_pai1,
-                "tokens_pai1": len(resources.tokenizer.tokenize(pai1)),
-                "evaluation_index_pai1": evaluations_count + 1,
-                "evaluation_index_descendente": evaluations_count + 2,
-            })
-            evaluations_count += 2
-
+            descendentes_info.append(
+                {
+                    "descendente": nova_frase,
+                    "score_descendente": None,
+                    "tokens_descendente": len(resources.tokenizer.tokenize(nova_frase)),
+                    "pai1": pai1,
+                    "score_pai1": fitness[pai1_idx],
+                    "tokens_pai1": len(resources.tokenizer.tokenize(pai1)),
+                    "evaluation_index_pai1": parent_evaluation_offset + pai1_idx + 1,
+                    "evaluation_index_descendente": None,
+                }
+            )
             nova_populacao.append(nova_frase)
+
+        descendant_scores = avaliar_sentimento(resources, config, nova_populacao)
+        descendant_evaluation_offset = evaluations_count
+        evaluations_count += len(nova_populacao)
+
+        for idx, (candidate_info, score_descendente) in enumerate(
+            zip(descendentes_info, descendant_scores, strict=True)
+        ):
+            candidate_info["score_descendente"] = score_descendente
+            candidate_info["evaluation_index_descendente"] = descendant_evaluation_offset + idx + 1
 
         top_5_descendentes = sorted(
             descendentes_info,
