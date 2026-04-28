@@ -149,12 +149,11 @@ def crossover(resources, config, frase1, frase2):
 
 def algoritmo_genetico(resources, config, populacao):
     historico_geracoes = {}
-    evaluations_count = 0
+    fitness = avaliar_sentimento(resources, config, copy.deepcopy(populacao))
+    evaluation_indices = list(range(1, len(populacao) + 1))
+    evaluations_count = len(populacao)
+
     for geracao in tqdm(range(config["num_geracoes"]), desc="Evoluindo"):
-        populacao_copy = copy.deepcopy(populacao)
-        fitness = avaliar_sentimento(resources, config, populacao_copy)
-        parent_evaluation_offset = evaluations_count
-        evaluations_count += len(populacao)
         nova_populacao = []
         descendentes_info = []
 
@@ -174,7 +173,7 @@ def algoritmo_genetico(resources, config, populacao):
                     "pai1": pai1,
                     "score_pai1": fitness[pai1_idx],
                     "tokens_pai1": len(resources.tokenizer.tokenize(pai1)),
-                    "evaluation_index_pai1": parent_evaluation_offset + pai1_idx + 1,
+                    "evaluation_index_pai1": evaluation_indices[pai1_idx],
                     "evaluation_index_descendente": None,
                 }
             )
@@ -201,5 +200,9 @@ def algoritmo_genetico(resources, config, populacao):
             "evaluations_cumulative": evaluations_count,
         }
         populacao = nova_populacao
+        fitness = descendant_scores
+        evaluation_indices = [
+            candidate_info["evaluation_index_descendente"] for candidate_info in descendentes_info
+        ]
 
     return historico_geracoes

@@ -5,11 +5,12 @@ população: 50, 100, 200
 gerações: 100, 200, 300*
 prob. mutação: 0.1, 0.2, 0.4
 intensidade da mutação: 5%, 10%, 20%
-prob. crossover: 0.5, 0.8, 0.95
 Etapa 2 — operadores de tamanho
 rodar com a melhor config de 1.
+prob. crossover: 0.5, 0.8, 0.95
 add token: 0.1, 0.3, 0.5
 remove token: 0.1, 0.3, 0.5
+
 Etapa 3 — reconstrução
 top-k: 10, 50, 100
 estratégia de escolha: argmax vs weighted sampling
@@ -29,17 +30,19 @@ sem restart
 Teste:
 
 step size = 5%, 10%, 20%
+neighbors = 1, 5, 10.
+
 Etapa 2
+sem restart
+com restart
 
 Pegue o melhor step size e teste:
 
-sem restart
-com restart
+
 Etapa 3
 
 Se ainda quiser refinar, teste:
 
-neighbors = 1, 5, 10.
 
 Ablação de inicialização e decoder serão feitas posteriormente.
 
