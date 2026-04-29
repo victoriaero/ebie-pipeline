@@ -1,5 +1,6 @@
 import itertools
 import json
+import argparse
 import subprocess
 import sys
 from copy import deepcopy
@@ -25,6 +26,15 @@ STAGE2_PROB_REMOVE_TOKEN = [0.1, 0.3, 0.5]
 def load_config(config_path):
     with Path(config_path).open("r", encoding="utf-8") as file:
         return yaml.safe_load(file) or {}
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run or resume the EBIE stage 2 grid.")
+    parser.add_argument(
+        "--resume-run",
+        help="Existing stage 2 run timestamp to resume, for example 20260427_222451.",
+    )
+    return parser.parse_args()
 
 
 def slugify(value):
@@ -63,6 +73,7 @@ def generate_stage2_configs(base_config):
         config["prob_remover_token"] = prob_remove
         config["classifier_evaluation_budget"] = STAGE2_EBIE_BUDGET
         config["classifier_evaluation_budget_kind"] = "descendants_only"
+        config["save_run_history"] = True
         config["experiment_name"] = build_experiment_name(index, config)
         yield config
 
@@ -83,16 +94,48 @@ def build_run_timestamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def build_output_filename(experiment_name):
+    return f"historico_completo_genetic_current_decoder_{experiment_name}.json"
+
+
+def load_existing_manifest(manifest_path):
+    if not manifest_path.exists():
+        return []
+
+    with manifest_path.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def detect_experiment_status(outputs_dir, experiment_name):
+    output_path = outputs_dir / build_output_filename(experiment_name)
+    if not output_path.exists():
+        return {"status": "missing", "completed_runs": 0, "total_runs": None}
+
+    with output_path.open("r", encoding="utf-8") as file:
+        payload = json.load(file)
+
+    progress = payload.get("progress", {})
+    return {
+        "status": progress.get("status", "unknown"),
+        "completed_runs": progress.get("completed_runs", 0),
+        "total_runs": progress.get("total_runs"),
+    }
+
+
 def main():
+    args = parse_args()
     repo_root = Path(__file__).resolve().parents[1]
     base_config_path = repo_root / "config.yaml"
     base_config = load_config(base_config_path)
-    run_timestamp = build_run_timestamp()
+    run_timestamp = args.resume_run or build_run_timestamp()
 
     generated_configs_dir = repo_root / "generated_configs" / "ebie_stage2" / run_timestamp
     outputs_dir = repo_root / "outputs" / "ebie_stage2" / run_timestamp
     manifest_path = outputs_dir / "manifest_ebie_stage2.json"
-    manifest = []
+    manifest = load_existing_manifest(manifest_path)
+    manifest_by_experiment = {
+        item["experiment_name"]: item for item in manifest if "experiment_name" in item
+    }
 
     for config in generate_stage2_configs(base_config):
         experiment_name = config["experiment_name"]
@@ -100,31 +143,37 @@ def main():
         config["output_file"] = str(outputs_dir / "historico_completo.json")
         write_yaml(config_path, config)
 
-        manifest.append(
-            {
-                "run_timestamp": run_timestamp,
-                "experiment_name": experiment_name,
-                "config_path": str(config_path),
-                "output_file": config["output_file"],
-                "parameters": {
-                    "algorithm": "genetic",
-                    "populacao_inicial": config["populacao_inicial"],
-                    "num_geracoes": config["num_geracoes"],
-                    "prob_mutacao_embedding": config["prob_mutacao_embedding"],
-                    "mutation_intensity_percent": config["mutation_intensity_percent"],
-                    "prob_crossover_embedding": config["prob_crossover_embedding"],
-                    "prob_add_random_token": config["prob_add_random_token"],
-                    "prob_remover_token": config["prob_remover_token"],
-                    "classifier_evaluation_budget": config["classifier_evaluation_budget"],
-                    "expected_descendant_evaluations": (
-                        config["populacao_inicial"] * config["num_geracoes"]
-                    ),
-                    "expected_total_classifier_evaluations": (
-                        config["populacao_inicial"] * (config["num_geracoes"] + 1)
-                    ),
-                },
-            }
+        manifest_by_experiment[experiment_name] = {
+            "run_timestamp": run_timestamp,
+            "experiment_name": experiment_name,
+            "config_path": str(config_path),
+            "output_file": config["output_file"],
+            "parameters": {
+                "algorithm": "genetic",
+                "populacao_inicial": config["populacao_inicial"],
+                "num_geracoes": config["num_geracoes"],
+                "prob_mutacao_embedding": config["prob_mutacao_embedding"],
+                "mutation_intensity_percent": config["mutation_intensity_percent"],
+                "prob_crossover_embedding": config["prob_crossover_embedding"],
+                "prob_add_random_token": config["prob_add_random_token"],
+                "prob_remover_token": config["prob_remover_token"],
+                "classifier_evaluation_budget": config["classifier_evaluation_budget"],
+                "expected_descendant_evaluations": (
+                    config["populacao_inicial"] * config["num_geracoes"]
+                ),
+                "expected_total_classifier_evaluations": (
+                    config["populacao_inicial"] * (config["num_geracoes"] + 1)
+                ),
+            },
+        }
+        save_manifest(
+            manifest_path,
+            [manifest_by_experiment[key] for key in sorted(manifest_by_experiment)]
         )
+
+        experiment_status = detect_experiment_status(outputs_dir, experiment_name)
+        if experiment_status["status"] == "completed":
+            continue
 
         subprocess.run(
             [sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)],
@@ -132,7 +181,10 @@ def main():
             cwd=repo_root,
         )
 
-    save_manifest(manifest_path, manifest)
+    save_manifest(
+        manifest_path,
+        [manifest_by_experiment[key] for key in sorted(manifest_by_experiment)]
+    )
 
 
 if __name__ == "__main__":

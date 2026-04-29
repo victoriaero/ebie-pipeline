@@ -52,6 +52,33 @@ def parse_args():
     return parser.parse_args()
 
 
+def load_json_payload(path):
+    if not path.exists():
+        return None
+
+    try:
+        with path.open("r", encoding="utf-8") as file:
+            return json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def load_existing_payload(output_file):
+    output_path = Path(output_file)
+    candidates = [
+        load_json_payload(output_path),
+        load_json_payload(output_path.with_name(f"{output_path.name}.tmp")),
+    ]
+    candidates = [payload for payload in candidates if payload is not None]
+    if not candidates:
+        return None
+
+    return max(
+        candidates,
+        key=lambda payload: payload.get("progress", {}).get("completed_runs", 0),
+    )
+
+
 def serialize_run_config(run_config):
     return {
         key: value
@@ -133,7 +160,7 @@ def save_payload(output_file, payload):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = output_path.with_name(f"{output_path.name}.tmp")
     with temp_path.open("w", encoding="utf-8") as file:
-        json.dump(payload, file, indent=2)
+        json.dump(payload, file, separators=(",", ":"))
     temp_path.replace(output_path)
 
 
@@ -157,6 +184,35 @@ def build_payload(run_config, algorithm_name, decoder_config, runs_payload, run_
     }
 
 
+def restore_previous_progress(existing_payload, seeds):
+    if not existing_payload:
+        return [], []
+
+    runs_payload = existing_payload.get("runs", [])
+    completed_by_seed = {}
+    for run in runs_payload:
+        seed = run.get("seed")
+        if seed in seeds and seed not in completed_by_seed:
+            completed_by_seed[seed] = run
+
+    ordered_runs = [completed_by_seed[seed] for seed in seeds if seed in completed_by_seed]
+    run_summaries = [run["metrics"] for run in ordered_runs]
+    return ordered_runs, run_summaries
+
+
+def build_run_payload(run_config, seed, history, generation_metrics, evaluation_metrics, run_summary):
+    run_payload = {
+        "seed": seed,
+        "config": serialize_run_config(run_config),
+        "generation_metrics": generation_metrics,
+        "evaluation_metrics": evaluation_metrics,
+        "metrics": run_summary,
+    }
+    if run_config.get("save_run_history", True):
+        run_payload["history"] = history
+    return run_payload
+
+
 def main():
     args = parse_args()
     config = load_config(args.config)
@@ -169,10 +225,27 @@ def main():
             run_config = dict(config)
             run_config.update(decoder_config)
             output_file = build_output_path(run_config, algorithm_name, decoder_config["name"])
-            runs_payload = []
-            run_summaries = []
+            existing_payload = load_existing_payload(output_file)
+            runs_payload, run_summaries = restore_previous_progress(existing_payload, seeds)
+            completed_seeds = {run["seed"] for run in runs_payload}
+
+            if len(completed_seeds) == len(seeds):
+                payload = build_payload(
+                    run_config,
+                    algorithm_name,
+                    decoder_config,
+                    runs_payload,
+                    run_summaries,
+                    seeds,
+                    status="completed",
+                )
+                save_payload(output_file, payload)
+                continue
 
             for seed in seeds:
+                if seed in completed_seeds:
+                    continue
+
                 set_global_seed(seed)
                 history = execute_single_run(algorithm_name, resources, run_config)
                 run_summary = summarize_run(history, run_config["success_target_score"])
@@ -185,16 +258,17 @@ def main():
                     run_config["success_target_score"],
                 )
                 runs_payload.append(
-                    {
-                        "seed": seed,
-                        "config": serialize_run_config(run_config),
-                        "history": history,
-                        "generation_metrics": generation_metrics,
-                        "evaluation_metrics": evaluation_metrics,
-                        "metrics": run_summary,
-                    }
+                    build_run_payload(
+                        run_config,
+                        seed,
+                        history,
+                        generation_metrics,
+                        evaluation_metrics,
+                        run_summary,
+                    )
                 )
                 run_summaries.append(run_summary)
+                completed_seeds.add(seed)
                 save_payload(
                     output_file,
                     build_payload(

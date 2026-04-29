@@ -4,30 +4,62 @@ from src.ebie import avaliar_sentimento, gerar_variacao
 from src.initialization import generate_initial_population
 
 
+def _extract_descendant_and_score(resources, config, variation_result):
+    if isinstance(variation_result, tuple) and len(variation_result) == 2:
+        descendente, score_descendente = variation_result
+        if score_descendente is None:
+            score_descendente = avaliar_sentimento(resources, config, [descendente])[0]
+        return descendente, score_descendente
+
+    if isinstance(variation_result, dict):
+        descendente = variation_result["descendente"]
+        score_descendente = variation_result.get("score_descendente")
+        if score_descendente is None:
+            score_descendente = avaliar_sentimento(resources, config, [descendente])[0]
+        return descendente, score_descendente
+
+    descendente = variation_result
+    score_descendente = avaliar_sentimento(resources, config, [descendente])[0]
+    return descendente, score_descendente
+
+
 def hill_climbing(resources, config, solucao_inicial):
     historico_geracoes = {}
     solucao_atual = solucao_inicial
     score_atual = avaliar_sentimento(resources, config, [solucao_atual])[0]
     evaluation_index_atual = 1
     evaluations_count = 1
+    max_evaluations = config.get(
+        "max_evaluations",
+        1 + config["num_geracoes"] * config["hill_climbing_neighbors"],
+    )
+    geracao = 0
 
-    for geracao in tqdm(range(config["num_geracoes"]), desc="Subindo a colina"):
+    progress_bar = tqdm(
+        total=max_evaluations,
+        initial=min(evaluations_count, max_evaluations),
+        desc="Subindo a colina",
+    )
+
+    while evaluations_count < max_evaluations:
+        geracao += 1
         vizinhos_info = []
         melhor_vizinho = solucao_atual
         melhor_score = score_atual
-        vizinhos = []
+        evaluation_index_melhor = evaluation_index_atual
+        remaining_evaluations = max_evaluations - evaluations_count
+        max_neighbors = min(config["hill_climbing_neighbors"], remaining_evaluations)
 
-        for _ in range(config["hill_climbing_neighbors"]):
-            vizinhos.append(gerar_variacao(resources, config, solucao_atual))
-
-        vizinhos_scores = avaliar_sentimento(resources, config, vizinhos)
-        descendant_evaluation_offset = evaluations_count
-        evaluations_count += len(vizinhos)
-
-        for idx, (nova_frase, score_descendente) in enumerate(
-            zip(vizinhos, vizinhos_scores, strict=True)
-        ):
-            evaluation_index_descendente = descendant_evaluation_offset + idx + 1
+        for _ in range(max_neighbors):
+            variation_result = gerar_variacao(resources, config, solucao_atual)
+            nova_frase, score_descendente = _extract_descendant_and_score(
+                resources,
+                config,
+                variation_result,
+            )
+            evaluations_count += 1
+            progress_bar.update(1)
+            evaluation_index_descendente = evaluations_count
 
             vizinhos_info.append(
                 {
@@ -52,7 +84,7 @@ def hill_climbing(resources, config, solucao_inicial):
             key=lambda x: x["score_descendente"],
             reverse=True,
         )[:5]
-        historico_geracoes[f"geracao_{geracao + 1}"] = {
+        historico_geracoes[f"geracao_{geracao}"] = {
             "top_5": top_5_vizinhos,
             "all_candidates": vizinhos_info,
             "evaluations_cumulative": evaluations_count,
@@ -62,10 +94,11 @@ def hill_climbing(resources, config, solucao_inicial):
             solucao_atual = melhor_vizinho
             score_atual = melhor_score
             evaluation_index_atual = evaluation_index_melhor
-        elif config.get("hill_climbing_restart"):
+        elif config.get("hill_climbing_restart") and evaluations_count < max_evaluations:
             restart_solution = generate_initial_population(resources, config, 1)[0]
             restart_score = avaliar_sentimento(resources, config, [restart_solution])[0]
             evaluations_count += 1
+            progress_bar.update(1)
             restart_evaluation_index = evaluations_count
 
             restart_info = {
@@ -79,13 +112,13 @@ def hill_climbing(resources, config, solucao_inicial):
                 "evaluation_index_descendente": restart_evaluation_index,
                 "restart": True,
             }
-            historico_geracoes[f"geracao_{geracao + 1}"]["all_candidates"].append(restart_info)
-            historico_geracoes[f"geracao_{geracao + 1}"]["top_5"] = sorted(
-                historico_geracoes[f"geracao_{geracao + 1}"]["all_candidates"],
+            historico_geracoes[f"geracao_{geracao}"]["all_candidates"].append(restart_info)
+            historico_geracoes[f"geracao_{geracao}"]["top_5"] = sorted(
+                historico_geracoes[f"geracao_{geracao}"]["all_candidates"],
                 key=lambda x: x["score_descendente"],
                 reverse=True,
             )[:5]
-            historico_geracoes[f"geracao_{geracao + 1}"]["evaluations_cumulative"] = evaluations_count
+            historico_geracoes[f"geracao_{geracao}"]["evaluations_cumulative"] = evaluations_count
 
             # Random restart jumps to a fresh point even if it is worse, so the search
             # can leave a plateau and continue exploring a new region.
@@ -93,4 +126,5 @@ def hill_climbing(resources, config, solucao_inicial):
             score_atual = restart_score
             evaluation_index_atual = restart_evaluation_index
 
+    progress_bar.close()
     return historico_geracoes

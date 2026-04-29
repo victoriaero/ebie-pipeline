@@ -36,6 +36,8 @@ algorithms:
 num_execucoes: 1
 num_geracoes: 300
 populacao_inicial: 100
+# Hill climbing: orçamento total de avaliações do classificador.
+max_evaluations: 10001
 hill_climbing_neighbors: 100
 cma_es_population_size: 32
 cma_es_sigma: 0.5
