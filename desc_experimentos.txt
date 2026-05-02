@@ -55,15 +55,11 @@ Etapa 2
 sem restart
 com restart
 
-Pegue o melhor step size e teste:
+resultado:
 
-
-Etapa 3
-
-Se ainda quiser refinar, teste:
-
-
-Ablação de inicialização e decoder serão feitas posteriormente.
+neighbors = 1
+step size = 0.2 (20%)
+com restart
 
 RANDOM
 
