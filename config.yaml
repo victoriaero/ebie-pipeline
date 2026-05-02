@@ -45,7 +45,7 @@ cma_es_sigma: 0.5
 cma_es_elite_ratio: 0.5
 cma_es_cov_eps: 1.0e-6
 random_search_classifier_evals: 100
-random_search_batch_size: 10
+random_search_batch_size: 50
 perturbacao_magnitude: 64
 prob_add_random_token: 0.3
 prob_remover_token: 0.3

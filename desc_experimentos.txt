@@ -18,6 +18,25 @@ inicializações;
 
 Ablação de inicialização e decoder serão feitas posteriormente.
 
+Selecionados:
+
+população: 50
+gerações: 200
+prob_mutacao_embedding: 0.1
+mutation_intensity_percent: 0.1
+prob_crossover_embedding: 0.8
+prob_add_random_token: 0.3
+prob_remover_token: 0.1
+
+GA
+
+Selecionados:
+
+população: 50
+gerações: 200
+prob_mutacao_embedding: 0.1
+prob_crossover_embedding: 0.95
+
 HILL
 
 Etapa 1
