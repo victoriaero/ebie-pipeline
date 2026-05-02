@@ -7,6 +7,12 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import src.decoder as decoder
+from src.ga import (
+    GARunLogger,
+    build_initial_operator_records,
+    evaluate_and_log_decoded_embeddings,
+    evaluate_and_log_texts,
+)
 from src.resources import tokenize_for_roberta
 
 
@@ -64,7 +70,7 @@ def remover_token(embeddings):
     return embeddings
 
 
-def gerar_variacao(resources, config, frase):
+def gerar_variacao(resources, config, frase, return_embedding=False):
     inputs = tokenize_for_roberta(resources, frase)
     with torch.no_grad():
         outputs = resources.model.roberta(**inputs)
@@ -98,6 +104,8 @@ def gerar_variacao(resources, config, frase):
         novos_embeddings[0, idx] += perturbacao
 
     nova_frase = decoder.decode_embeddings_to_text(resources, config, novos_embeddings)
+    if return_embedding:
+        return nova_frase, novos_embeddings[0]
     return nova_frase
 
 
@@ -124,7 +132,7 @@ def torneio(populacao, fitness, tamanho=2):
     return melhor
 
 
-def crossover(resources, config, frase1, frase2):
+def crossover(resources, config, frase1, frase2, return_details=False):
     if random.random() < config["prob_crossover_embedding"]:
         inputs1 = tokenize_for_roberta(resources, frase1)
         inputs2 = tokenize_for_roberta(resources, frase2)
@@ -135,7 +143,10 @@ def crossover(resources, config, frase1, frase2):
         embeddings1 = outputs1.last_hidden_state
         embeddings2 = outputs2.last_hidden_state
         descendente_embedding = crossover_embeddings(config, embeddings1, embeddings2)
-        return decoder.decode_embeddings_to_text(resources, config, descendente_embedding)
+        descendente = decoder.decode_embeddings_to_text(resources, config, descendente_embedding)
+        if return_details:
+            return descendente, True
+        return descendente
 
     palavras1 = frase1.split()
     palavras2 = frase2.split()
@@ -144,40 +155,107 @@ def crossover(resources, config, frase1, frase2):
         nova_frase = palavras1[:ponto] + palavras2[ponto:]
     else:
         nova_frase = palavras1 if random.random() < 0.5 else palavras2
-    return " ".join(nova_frase)
+    descendente = " ".join(nova_frase)
+    if return_details:
+        return descendente, False
+    return descendente
 
 
 def algoritmo_genetico(resources, config, populacao):
     historico_geracoes = {}
-    fitness = avaliar_sentimento(resources, config, copy.deepcopy(populacao))
-    evaluation_indices = list(range(1, len(populacao) + 1))
-    evaluations_count = len(populacao)
+    logger = GARunLogger(resources, config, len(populacao), populacao)
+    populacao_details = evaluate_and_log_texts(
+        logger,
+        generation=0,
+        texts=copy.deepcopy(populacao),
+        operator_records=build_initial_operator_records(len(populacao)),
+    )
+    fitness = [candidate["objective_value"] for candidate in populacao_details]
 
     for geracao in tqdm(range(config["num_geracoes"]), desc="Evoluindo"):
         nova_populacao = []
-        descendentes_info = []
+        parent_records = []
 
         while len(nova_populacao) < len(populacao):
             pai1_idx = torneio(populacao, fitness, config["tournament_size"])
             pai2_idx = torneio(populacao, fitness, config["tournament_size"])
             pai1 = populacao[pai1_idx]
             pai2 = populacao[pai2_idx]
-            descendente = crossover(resources, config, pai1, pai2)
-            nova_frase = gerar_variacao(resources, config, descendente)
+            pai1_detail = populacao_details[pai1_idx]
+            pai2_detail = populacao_details[pai2_idx]
+            logger.mark_selected_parent(pai1_detail["candidate_id"])
+            logger.mark_selected_parent(pai2_detail["candidate_id"])
+            descendente, crossover_aplicado = crossover(
+                resources,
+                config,
+                pai1,
+                pai2,
+                return_details=True,
+            )
+            nova_frase, nova_embedding = gerar_variacao(
+                resources,
+                config,
+                descendente,
+                return_embedding=True,
+            )
 
-            descendentes_info.append(
+            parent_records.append(
                 {
-                    "descendente": nova_frase,
-                    "score_descendente": None,
-                    "tokens_descendente": len(resources.tokenizer.tokenize(nova_frase)),
-                    "pai1": pai1,
-                    "score_pai1": fitness[pai1_idx],
-                    "tokens_pai1": len(resources.tokenizer.tokenize(pai1)),
-                    "evaluation_index_pai1": evaluation_indices[pai1_idx],
-                    "evaluation_index_descendente": None,
+                    "pai1_idx": pai1_idx,
+                    "pai2_idx": pai2_idx,
+                    "parent_ids": [pai1_detail["candidate_id"], pai2_detail["candidate_id"]],
+                    "parent1_id": pai1_detail["candidate_id"],
+                    "parent2_id": pai2_detail["candidate_id"],
+                    "operator_used": "variation",
+                    "mutation_type": "ebie_embedding_variation",
+                    "crossover_type": (
+                        "ebie_dimension_crossover" if crossover_aplicado else "textual_fallback"
+                    ),
+                    "mutation_applied": True,
+                    "crossover_applied": crossover_aplicado,
                 }
             )
             nova_populacao.append(nova_frase)
+            parent_records[-1]["embedding"] = nova_embedding
+
+        nova_populacao_details = evaluate_and_log_decoded_embeddings(
+            logger,
+            generation=geracao + 1,
+            texts=nova_populacao,
+            embeddings=[record["embedding"] for record in parent_records],
+            operator_records=parent_records,
+        )
+        descendentes_info = []
+        for candidate_detail, parent_record in zip(
+            nova_populacao_details,
+            parent_records,
+            strict=True,
+        ):
+            pai1_detail = populacao_details[parent_record["pai1_idx"]]
+            pai2_detail = populacao_details[parent_record["pai2_idx"]]
+            descendentes_info.append(
+                {
+                    "candidate_id": candidate_detail["candidate_id"],
+                    "descendente": candidate_detail["decoded_text"],
+                    "score_descendente": candidate_detail["target_class_score"],
+                    "objective_value": candidate_detail["objective_value"],
+                    "tokens_descendente": candidate_detail["tokens_descendente"],
+                    "pai1": pai1_detail["decoded_text"],
+                    "pai1_id": pai1_detail["candidate_id"],
+                    "score_pai1": pai1_detail["target_class_score"],
+                    "tokens_pai1": len(resources.tokenizer.tokenize(pai1_detail["decoded_text"])),
+                    "evaluation_index_pai1": pai1_detail["evaluation_id"],
+                    "pai2": pai2_detail["decoded_text"],
+                    "pai2_id": pai2_detail["candidate_id"],
+                    "score_pai2": pai2_detail["target_class_score"],
+                    "tokens_pai2": len(resources.tokenizer.tokenize(pai2_detail["decoded_text"])),
+                    "evaluation_index_pai2": pai2_detail["evaluation_id"],
+                    "evaluation_index_descendente": candidate_detail["evaluation_id"],
+                    "crossover_applied": parent_record["crossover_applied"],
+                    "mutation_applied": parent_record["mutation_applied"],
+                    "elitism": False,
+                }
+            )
 
         descendant_scores = avaliar_sentimento(resources, config, nova_populacao)
         descendant_evaluation_offset = evaluations_count
@@ -197,12 +275,11 @@ def algoritmo_genetico(resources, config, populacao):
         historico_geracoes[f"geracao_{geracao + 1}"] = {
             "top_5": top_5_descendentes,
             "all_candidates": descendentes_info,
-            "evaluations_cumulative": evaluations_count,
+            "evaluations_cumulative": logger.evaluation_counter,
         }
         populacao = nova_populacao
-        fitness = descendant_scores
-        evaluation_indices = [
-            candidate_info["evaluation_index_descendente"] for candidate_info in descendentes_info
-        ]
+        populacao_details = nova_populacao_details
+        fitness = [candidate["objective_value"] for candidate in populacao_details]
 
+    logger.finalize(populacao_details, config["num_geracoes"])
     return historico_geracoes

@@ -3,7 +3,13 @@ import random
 import torch
 
 import src.decoder as decoder
-from src.ebie import avaliar_sentimento, mutacao_embeddings, remover_token
+from src.ebie import mutacao_embeddings, remover_token
+from src.ga import (
+    GARunLogger,
+    build_initial_operator_records,
+    evaluate_and_log_decoded_embeddings,
+    evaluate_and_log_texts,
+)
 from src.resources import tokenize_for_roberta
 
 
@@ -11,6 +17,7 @@ def gerar_variacao_sem_avaliacao(
     resources,
     config,
     frase,
+    return_embedding=False,
 ):
     inputs = tokenize_for_roberta(resources, frase)
     with torch.no_grad():
@@ -43,40 +50,82 @@ def gerar_variacao_sem_avaliacao(
         )
         novos_embeddings[0, idx] += perturbacao
 
-    return decoder.decode_embeddings_to_text(resources, config, novos_embeddings)
+    nova_frase = decoder.decode_embeddings_to_text(resources, config, novos_embeddings)
+    if return_embedding:
+        return nova_frase, novos_embeddings[0]
+    return nova_frase
 
 
 def random_search(resources, config, frase_base):
     historico_geracoes = {}
+    logger = GARunLogger(resources, config, 1, [frase_base])
     avaliacoes_restantes = config["random_search_classifier_evals"]
 
     if avaliacoes_restantes <= 0:
         return historico_geracoes
 
-    score_base = avaliar_sentimento(resources, config, [frase_base])[0]
+    base_detail = evaluate_and_log_texts(
+        logger,
+        generation=0,
+        texts=[frase_base],
+        operator_records=build_initial_operator_records(1),
+    )[0]
+    score_base = base_detail["objective_value"]
     avaliacoes_restantes -= 1
-    evaluations_count = 1
     geracao = 1
 
     while avaliacoes_restantes > 0:
-        candidatos_info = []
         batch_atual = min(config["random_search_batch_size"], avaliacoes_restantes)
+        candidatos_textos = []
+        candidatos_embeddings = []
+        operator_records = []
 
         for _ in range(batch_atual):
-            nova_frase = gerar_variacao_sem_avaliacao(resources, config, frase_base)
-            score_descendente = avaliar_sentimento(resources, config, [nova_frase])[0]
-            candidatos_info.append(
+            nova_frase, nova_embedding = gerar_variacao_sem_avaliacao(
+                resources,
+                config,
+                frase_base,
+                return_embedding=True,
+            )
+            candidatos_textos.append(nova_frase)
+            candidatos_embeddings.append(nova_embedding)
+            operator_records.append(
                 {
-                    "descendente": nova_frase,
-                    "score_descendente": score_descendente,
-                    "tokens_descendente": len(resources.tokenizer.tokenize(nova_frase)),
-                    "pai1": frase_base,
-                    "score_pai1": score_base,
-                    "tokens_pai1": len(resources.tokenizer.tokenize(frase_base)),
-                    "evaluation_index_descendente": evaluations_count + 1,
+                    "parent_ids": [base_detail["candidate_id"]],
+                    "parent1_id": base_detail["candidate_id"],
+                    "parent2_id": None,
+                    "operator_used": "sampling",
+                    "mutation_type": "random_embedding_variation",
+                    "crossover_type": None,
+                    "mutation_applied": True,
+                    "crossover_applied": False,
                 }
             )
-            evaluations_count += 1
+
+        candidatos_details = evaluate_and_log_decoded_embeddings(
+            logger,
+            generation=geracao,
+            texts=candidatos_textos,
+            embeddings=candidatos_embeddings,
+            operator_records=operator_records,
+        )
+        candidatos_info = []
+        for candidato_detail in candidatos_details:
+            candidatos_info.append(
+                {
+                    "candidate_id": candidato_detail["candidate_id"],
+                    "descendente": candidato_detail["decoded_text"],
+                    "score_descendente": candidato_detail["target_class_score"],
+                    "objective_value": candidato_detail["objective_value"],
+                    "tokens_descendente": candidato_detail["tokens_descendente"],
+                    "pai1": frase_base,
+                    "pai1_id": base_detail["candidate_id"],
+                    "score_pai1": score_base,
+                    "tokens_pai1": len(resources.tokenizer.tokenize(frase_base)),
+                    "evaluation_index_pai1": base_detail["evaluation_id"],
+                    "evaluation_index_descendente": candidato_detail["evaluation_id"],
+                }
+            )
 
         top_5 = sorted(
             candidatos_info,
@@ -86,10 +135,11 @@ def random_search(resources, config, frase_base):
         historico_geracoes[f"geracao_{geracao}"] = {
             "top_5": top_5,
             "all_candidates": candidatos_info,
-            "evaluations_cumulative": evaluations_count,
+            "evaluations_cumulative": logger.evaluation_counter,
         }
 
         avaliacoes_restantes -= batch_atual
         geracao += 1
 
+    logger.finalize([base_detail], geracao - 1)
     return historico_geracoes

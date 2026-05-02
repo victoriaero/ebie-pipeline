@@ -52,6 +52,7 @@ def generate_stage1_configs(base_config):
                 config["prob_crossover_embedding"] = FIXED_PROB_CROSSOVER
                 config["classifier_evaluation_budget"] = STAGE1_EBIE_BUDGET
                 config["classifier_evaluation_budget_kind"] = "descendants_only"
+                config["is_hyperparameter_selection"] = True
                 config["experiment_name"] = build_experiment_name(index, config)
                 yield config
                 index += 1

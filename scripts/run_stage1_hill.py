@@ -43,6 +43,7 @@ def generate_stage1_configs(base_config):
         config["num_geracoes"] = HILL_BUDGET // neighbors
         config["classifier_evaluation_budget"] = HILL_BUDGET
         config["classifier_evaluation_budget_kind"] = "neighbor_steps"
+        config["is_hyperparameter_selection"] = True
         config["experiment_name"] = build_experiment_name("hill_stage1", index, config)
         yield config
 
@@ -57,6 +58,7 @@ def generate_stage2_configs(base_config, best_stage1):
         config["num_geracoes"] = best_stage1["num_geracoes"]
         config["classifier_evaluation_budget"] = HILL_BUDGET
         config["classifier_evaluation_budget_kind"] = "neighbor_steps_with_optional_restart"
+        config["is_hyperparameter_selection"] = True
         config["experiment_name"] = build_experiment_name("hill_stage2", index, config)
         yield config
 

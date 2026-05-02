@@ -9,6 +9,7 @@ import yaml
 from src.cma_es import cma_es
 from src.ebie import algoritmo_genetico
 from src.experiment_utils import set_global_seed
+from src.ga import vanilla_ga
 from src.hill import hill_climbing
 from src.initialization import generate_initial_population
 from src.metrics import (
@@ -143,6 +144,9 @@ def execute_single_run(algorithm_name, resources, config):
     if algorithm_name == "genetic":
         return algoritmo_genetico(resources, config, initial_population)
 
+    if algorithm_name == "vanilla_ga":
+        return vanilla_ga(resources, config, initial_population)
+
     if algorithm_name == "hill_climbing":
         return hill_climbing(resources, config, random.choice(initial_population))
 
@@ -204,10 +208,12 @@ def build_run_payload(run_config, seed, history, generation_metrics, evaluation_
     run_payload = {
         "seed": seed,
         "config": serialize_run_config(run_config),
-        "generation_metrics": generation_metrics,
-        "evaluation_metrics": evaluation_metrics,
         "metrics": run_summary,
     }
+    if generation_metrics is not None:
+        run_payload["generation_metrics"] = generation_metrics
+    if evaluation_metrics is not None:
+        run_payload["evaluation_metrics"] = evaluation_metrics
     if run_config.get("save_run_history", True):
         run_payload["history"] = history
     return run_payload
@@ -247,19 +253,29 @@ def main():
                     continue
 
                 set_global_seed(seed)
-                history = execute_single_run(algorithm_name, resources, run_config)
-                run_summary = summarize_run(history, run_config["success_target_score"])
-                generation_metrics = summarize_generation_metrics(
-                    history,
-                    run_config["success_target_score"],
+                seed_run_config = dict(run_config)
+                seed_run_config["_current_seed"] = seed
+                seed_run_config["_algorithm_name"] = algorithm_name
+                seed_run_config["_resolved_output_file"] = output_file
+                history = execute_single_run(algorithm_name, resources, seed_run_config)
+                run_summary = summarize_run(history, seed_run_config["success_target_score"])
+                is_hyperparameter_selection = bool(
+                    seed_run_config.get("is_hyperparameter_selection", False)
                 )
-                evaluation_metrics = summarize_evaluation_metrics(
-                    history,
-                    run_config["success_target_score"],
-                )
+                generation_metrics = None
+                evaluation_metrics = None
+                if is_hyperparameter_selection:
+                    generation_metrics = summarize_generation_metrics(
+                        history,
+                        seed_run_config["success_target_score"],
+                    )
+                    evaluation_metrics = summarize_evaluation_metrics(
+                        history,
+                        seed_run_config["success_target_score"],
+                    )
                 runs_payload.append(
                     build_run_payload(
-                        run_config,
+                        seed_run_config,
                         seed,
                         history,
                         generation_metrics,

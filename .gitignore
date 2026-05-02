@@ -1,5 +1,7 @@
 __pycache__/*
 scr/__pycache__/*
+scripts/__pycache__/*
 generated_configs/*
 outputs/*
+outputs_g2/*
 venv/*
