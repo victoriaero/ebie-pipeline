@@ -290,6 +290,12 @@ def _method_hyperparameters(config, population_size):
     }
 
 
+def _should_persist_detailed_run_artifacts(config):
+    if config.get("save_detailed_run_artifacts") is not None:
+        return bool(config.get("save_detailed_run_artifacts"))
+    return not bool(config.get("is_hyperparameter_selection", False))
+
+
 def _tokenize_population_for_roberta(resources, population):
     return resources.tokenizer(
         population,
@@ -368,6 +374,7 @@ class GARunLogger:
         self.evaluation_budget = _get_evaluation_budget(config, population_size)
         self.timestamp_start = _now_iso()
         self.start_time = time.time()
+        self.persist_detailed_artifacts = _should_persist_detailed_run_artifacts(config)
         self.run_id, self.run_dir = _build_run_dir(
             config,
             self.experiment_id,
@@ -395,7 +402,8 @@ class GARunLogger:
         self.selected_parent_ids = set()
         self.final_population_candidate_ids = []
         self.config_payload = self._build_config_payload(timestamp_end=None)
-        _write_json(self.config_path, self.config_payload)
+        if self.persist_detailed_artifacts:
+            _write_json(self.config_path, self.config_payload)
 
     def _build_config_payload(self, timestamp_end):
         repo_root = self.config.get("_base_dir")
@@ -479,12 +487,16 @@ class GARunLogger:
 
     def add_generation_summary(self, row):
         self.generation_rows.append(row)
-        _write_csv(self.generation_summary_path, self.generation_rows, GENERATION_SUMMARY_FIELDS)
+        if self.persist_detailed_artifacts:
+            _write_csv(self.generation_summary_path, self.generation_rows, GENERATION_SUMMARY_FIELDS)
 
     def flush_individual_log(self):
-        _write_csv(self.individual_log_path, self.rows, INDIVIDUAL_LOG_FIELDS)
+        if self.persist_detailed_artifacts:
+            _write_csv(self.individual_log_path, self.rows, INDIVIDUAL_LOG_FIELDS)
 
     def flush_embeddings(self):
+        if not self.persist_detailed_artifacts:
+            return
         if not self.embedding_rows:
             embeddings = np.empty((0, 0), dtype=np.float32)
         else:
@@ -570,7 +582,8 @@ class GARunLogger:
             "initial_all_class_scores": self.rows[0]["all_class_scores"] if self.rows else None,
             "validation": self.validate(),
         }
-        _write_json(self.run_summary_path, summary)
+        if self.persist_detailed_artifacts:
+            _write_json(self.run_summary_path, summary)
         self.config_payload = self._build_config_payload(timestamp_end=timestamp_end)
         self.config_payload.update(
             {
@@ -584,7 +597,8 @@ class GARunLogger:
                 "best_embedding_row_index": self.best_embedding_row_index,
             }
         )
-        _write_json(self.config_path, self.config_payload)
+        if self.persist_detailed_artifacts:
+            _write_json(self.config_path, self.config_payload)
 
     def validate(self):
         errors = []
