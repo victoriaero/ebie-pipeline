@@ -11,9 +11,9 @@ import yaml
 
 FINAL_POPULACAO_INICIAL = 50
 FINAL_NUM_GERACOES = 400
-FINAL_GA_PROB_MUTACAO = 0.4
-FINAL_GA_PROB_CROSSOVER = 0.5
-FINAL_GA_EMBEDDING_MUTATION_STD = 0.1
+FINAL_RCGA_MUTATION_PROB = 0.4
+FINAL_RCGA_CROSSOVER_PROB = 0.5
+FINAL_RCGA_EMBEDDING_MUTATION_STD = 0.1
 FINAL_TOURNAMENT_SIZE = 2
 FINAL_NUM_RUNS = 30
 FINAL_SEED_START = 0
@@ -25,23 +25,10 @@ def load_config(config_path):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run or resume the final Vanilla GA experiment.")
-    parser.add_argument(
-        "--resume-run",
-        help="Existing final Vanilla GA run timestamp to resume, for example 20260501_120000.",
-    )
-    parser.add_argument(
-        "--seed-start",
-        type=int,
-        default=FINAL_SEED_START,
-        help="First seed in the contiguous seed range.",
-    )
-    parser.add_argument(
-        "--num-runs",
-        type=int,
-        default=FINAL_NUM_RUNS,
-        help="Number of seeds/runs to execute.",
-    )
+    parser = argparse.ArgumentParser(description="Run or resume the final RCGA experiment.")
+    parser.add_argument("--resume-run", help="Existing final RCGA run timestamp to resume, for example 20260501_120000.",)
+    parser.add_argument("--seed-start", type=int, default=FINAL_SEED_START, help="First seed in the contiguous seed range.",)
+    parser.add_argument("--num-runs", type=int, default=FINAL_NUM_RUNS, help="Number of seeds/runs to execute.",)
     return parser.parse_args()
 
 
@@ -51,12 +38,12 @@ def slugify(value):
 
 def build_experiment_name(config):
     return (
-        "vanilla_ga_final"
+        "rcga_final"
         f"_pop{config['populacao_inicial']}"
         f"_gen{config['num_geracoes']}"
-        f"_pmut{slugify(config['ga_mutation_prob'])}"
-        f"_pcross{slugify(config['ga_crossover_prob'])}"
-        f"_mstd{slugify(config['ga_embedding_mutation_std'])}"
+        f"_pmut{slugify(config['rcga_mutation_prob'])}"
+        f"_pcross{slugify(config['rcga_crossover_prob'])}"
+        f"_mstd{slugify(config['rcga_embedding_mutation_std'])}"
         f"_tourn{config['tournament_size']}"
         f"_runs{len(config['experiment_seeds'])}"
     )
@@ -65,20 +52,20 @@ def build_experiment_name(config):
 def build_final_config(base_config, seeds):
     config = deepcopy(base_config)
 
-    config["algorithms"] = ["vanilla_ga"]
+    config["algorithms"] = ["rcga"]
 
     config["populacao_inicial"] = FINAL_POPULACAO_INICIAL
     config["num_geracoes"] = FINAL_NUM_GERACOES
 
-    config["ga_mutation_prob"] = FINAL_GA_PROB_MUTACAO
-    config["ga_crossover_prob"] = FINAL_GA_PROB_CROSSOVER
-    config["ga_embedding_mutation_std"] = FINAL_GA_EMBEDDING_MUTATION_STD
+    config["rcga_mutation_prob"] = FINAL_RCGA_MUTATION_PROB
+    config["rcga_crossover_prob"] = FINAL_RCGA_CROSSOVER_PROB
+    config["rcga_embedding_mutation_std"] = FINAL_RCGA_EMBEDDING_MUTATION_STD
     config["tournament_size"] = FINAL_TOURNAMENT_SIZE
 
-    # Mantém compatibilidade com scripts antigos e sumarizadores que ainda usam os nomes do EBIE.
-    config["prob_mutacao_embedding"] = FINAL_GA_PROB_MUTACAO
-    config["prob_crossover_embedding"] = FINAL_GA_PROB_CROSSOVER
-    config["mutation_intensity_percent"] = FINAL_GA_EMBEDDING_MUTATION_STD
+    # Keep compatibility with older scripts and summarizers that still use EBIE names.
+    config["prob_mutacao_embedding"] = FINAL_RCGA_MUTATION_PROB
+    config["prob_crossover_embedding"] = FINAL_RCGA_CROSSOVER_PROB
+    config["mutation_intensity_percent"] = FINAL_RCGA_EMBEDDING_MUTATION_STD
 
     config["experiment_seeds"] = seeds
     config["num_execucoes"] = len(seeds)
@@ -114,7 +101,7 @@ def build_run_timestamp():
 
 
 def build_output_filename(experiment_name):
-    return f"historico_completo_vanilla_ga_current_decoder_{experiment_name}.json"
+    return f"historico_completo_rcga_current_decoder_{experiment_name}.json"
 
 
 def detect_experiment_status(outputs_dir, experiment_name):
@@ -146,10 +133,10 @@ def main():
     seeds = list(range(args.seed_start, args.seed_start + args.num_runs))
 
     generated_configs_dir = (
-        repo_root / "generated_configs" / "vanilla_ga_final" / run_timestamp
+        repo_root / "generated_configs" / "rcga_final" / run_timestamp
     )
-    outputs_dir = repo_root / "outputs" / "vanilla_ga_final" / run_timestamp
-    manifest_path = outputs_dir / "manifest_vanilla_ga_final.json"
+    outputs_dir = repo_root / "outputs" / "rcga_final" / run_timestamp
+    manifest_path = outputs_dir / "manifest_rcga_final.json"
 
     config = build_final_config(base_config, seeds)
     experiment_name = config["experiment_name"]
@@ -165,12 +152,12 @@ def main():
         "config_path": str(config_path),
         "output_file": config["output_file"],
         "parameters": {
-            "algorithm": "vanilla_ga",
+            "algorithm": "rcga",
             "populacao_inicial": config["populacao_inicial"],
             "num_geracoes": config["num_geracoes"],
-            "ga_mutation_prob": config["ga_mutation_prob"],
-            "ga_crossover_prob": config["ga_crossover_prob"],
-            "ga_embedding_mutation_std": config["ga_embedding_mutation_std"],
+            "rcga_mutation_prob": config["rcga_mutation_prob"],
+            "rcga_crossover_prob": config["rcga_crossover_prob"],
+            "rcga_embedding_mutation_std": config["rcga_embedding_mutation_std"],
             "tournament_size": config["tournament_size"],
             "num_runs": len(seeds),
             "seeds": seeds,
@@ -198,16 +185,7 @@ def main():
     if experiment_status["status"] == "completed":
         return
 
-    subprocess.run(
-        [
-            sys.executable,
-            str(repo_root / "run_experiments.py"),
-            "--config",
-            str(config_path),
-        ],
-        check=True,
-        cwd=repo_root,
-    )
+    subprocess.run([sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path),], check=True, cwd=repo_root,)
 
     save_manifest(manifest_path, manifest)
 

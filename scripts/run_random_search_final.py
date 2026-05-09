@@ -25,37 +25,12 @@ def load_config(config_path):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Run or resume the final Random Search baseline."
-    )
-    parser.add_argument(
-        "--resume-run",
-        help="Existing final Random Search run timestamp to resume, for example 20260501_120000.",
-    )
-    parser.add_argument(
-        "--seed-start",
-        type=int,
-        default=FINAL_SEED_START,
-        help="First seed in the contiguous seed range.",
-    )
-    parser.add_argument(
-        "--num-runs",
-        type=int,
-        default=FINAL_NUM_RUNS,
-        help="Number of seeds/runs to execute.",
-    )
-    parser.add_argument(
-        "--random-search-classifier-evals",
-        type=int,
-        default=FINAL_RANDOM_SEARCH_CLASSIFIER_EVALS,
-        help="Total classifier evaluations per seed, including the initial baseline phrase.",
-    )
-    parser.add_argument(
-        "--random-search-batch-size",
-        type=int,
-        default=FINAL_RANDOM_SEARCH_BATCH_SIZE,
-        help="Number of random candidates sampled per random-search generation/log batch.",
-    )
+    parser = argparse.ArgumentParser(description="Run or resume the final Random Search baseline.")
+    parser.add_argument("--resume-run", help="Existing final Random Search run timestamp to resume, for example 20260501_120000.",)
+    parser.add_argument("--seed-start", type=int, default=FINAL_SEED_START, help="First seed in the contiguous seed range.",)
+    parser.add_argument("--num-runs", type=int, default=FINAL_NUM_RUNS, help="Number of seeds/runs to execute.",)
+    parser.add_argument("--random-search-classifier-evals", type=int, default=FINAL_RANDOM_SEARCH_CLASSIFIER_EVALS, help="Total classifier evaluations per seed, including the initial baseline phrase.",)
+    parser.add_argument("--random-search-batch-size", type=int, default=FINAL_RANDOM_SEARCH_BATCH_SIZE, help="Number of random candidates sampled per random-search generation/log batch.",)
     return parser.parse_args()
 
 
@@ -73,12 +48,7 @@ def build_final_config(base_config, seeds, random_search_classifier_evals, rando
     config["algorithms"] = ["random_search"]
     config["populacao_inicial"] = FINAL_POPULACAO_INICIAL
     config["num_geracoes"] = FINAL_NUM_GERACOES
-    for key in (
-        "prob_mutacao_embedding",
-        "mutation_intensity_percent",
-        "prob_add_random_token",
-        "prob_remover_token",
-    ):
+    for key in ("prob_mutacao_embedding", "mutation_intensity_percent", "prob_add_random_token", "prob_remover_token",):
         config.pop(key, None)
     config["random_search_classifier_evals"] = random_search_classifier_evals
     config["random_search_batch_size"] = random_search_batch_size
@@ -141,12 +111,7 @@ def main():
     outputs_dir = repo_root / "outputs" / "random_search_final" / run_timestamp
     manifest_path = outputs_dir / "manifest_random_search_final.json"
 
-    config = build_final_config(
-        base_config,
-        seeds,
-        args.random_search_classifier_evals,
-        args.random_search_batch_size,
-    )
+    config = build_final_config(base_config, seeds, args.random_search_classifier_evals, args.random_search_batch_size,)
     experiment_name = config["experiment_name"]
     config_path = generated_configs_dir / f"{experiment_name}.yaml"
     config["output_file"] = str(outputs_dir / "historico_completo.json")
@@ -187,11 +152,7 @@ def main():
     if experiment_status["status"] == "completed":
         return
 
-    subprocess.run(
-        [sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)],
-        check=True,
-        cwd=repo_root,
-    )
+    subprocess.run([sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)], check=True, cwd=repo_root,)
 
     save_manifest(manifest_path, manifest)
 

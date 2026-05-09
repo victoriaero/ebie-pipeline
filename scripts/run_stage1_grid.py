@@ -91,35 +91,9 @@ def main():
         config["output_file"] = str(outputs_dir / "historico_completo.json")
         write_yaml(config_path, config)
 
-        manifest.append(
-            {
-                "run_timestamp": run_timestamp,
-                "experiment_name": experiment_name,
-                "config_path": str(config_path),
-                "output_file": config["output_file"],
-                "parameters": {
-                    "algorithm": "genetic",
-                    "populacao_inicial": config["populacao_inicial"],
-                    "num_geracoes": config["num_geracoes"],
-                    "prob_mutacao_embedding": config["prob_mutacao_embedding"],
-                    "mutation_intensity_percent": config["mutation_intensity_percent"],
-                    "prob_crossover_embedding": config["prob_crossover_embedding"],
-                    "classifier_evaluation_budget": config["classifier_evaluation_budget"],
-                    "expected_descendant_evaluations": (
-                        config["populacao_inicial"] * config["num_geracoes"]
-                    ),
-                    "expected_total_classifier_evaluations": (
-                        config["populacao_inicial"] * (config["num_geracoes"] + 1)
-                    ),
-                },
-            }
-        )
+        manifest.append({"run_timestamp":run_timestamp, "experiment_name":experiment_name, "config_path":str(config_path), "output_file":config["output_file"], "parameters":{"algorithm":"genetic", "populacao_inicial":config["populacao_inicial"], "num_geracoes":config["num_geracoes"], "prob_mutacao_embedding":config["prob_mutacao_embedding"], "mutation_intensity_percent":config["mutation_intensity_percent"], "prob_crossover_embedding":config["prob_crossover_embedding"], "classifier_evaluation_budget":config["classifier_evaluation_budget"], "expected_descendant_evaluations":(config["populacao_inicial"] *config["num_geracoes"]), "expected_total_classifier_evaluations":(config["populacao_inicial"] *(config["num_geracoes"] + 1)),},})
 
-        subprocess.run(
-            [sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)],
-            check=True,
-            cwd=repo_root,
-        )
+        subprocess.run([sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)], check=True, cwd=repo_root,)
 
     save_manifest(manifest_path, manifest)
 

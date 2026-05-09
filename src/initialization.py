@@ -54,9 +54,7 @@ def _load_llm(resources, config):
     cache_key = (config["llm_initialization_model"], resources.device.type)
     if cache_key not in _LLM_CACHE:
         tokenizer = AutoTokenizer.from_pretrained(config["llm_initialization_model"])
-        model = AutoModelForCausalLM.from_pretrained(config["llm_initialization_model"]).to(
-            resources.device
-        )
+        model = AutoModelForCausalLM.from_pretrained(config["llm_initialization_model"]).to(resources.device)
         model.eval()
         _LLM_CACHE[cache_key] = (tokenizer, model)
     return _LLM_CACHE[cache_key]
@@ -81,29 +79,15 @@ def _generate_llm_word_bank(resources, config):
     messages = [{"role": "user", "content": prompt}]
 
     if hasattr(tokenizer, "apply_chat_template"):
-        model_input = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        model_input = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,)
     else:
         model_input = prompt
 
     inputs = tokenizer(model_input, return_tensors="pt").to(resources.device)
     with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=config["llm_initialization_max_new_tokens"],
-            do_sample=True,
-            temperature=0.8,
-            top_p=0.9,
-            pad_token_id=tokenizer.eos_token_id,
-        )
+        outputs = model.generate(**inputs, max_new_tokens=config["llm_initialization_max_new_tokens"], do_sample=True, temperature=0.8, top_p=0.9, pad_token_id=tokenizer.eos_token_id,)
 
-    generated_text = tokenizer.decode(
-        outputs[0][inputs["input_ids"].shape[1]:],
-        skip_special_tokens=True,
-    )
+    generated_text = tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True,)
     candidates = _extract_candidate_words(generated_text)
     if not candidates:
         raise ValueError("The LLM initialization did not return usable words.")

@@ -27,31 +27,11 @@ def load_config(config_path):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Run or resume the final Hill Climbing experiment."
-    )
-    parser.add_argument(
-        "--resume-run",
-        help="Existing final Hill Climbing run timestamp to resume, for example 20260501_120000.",
-    )
-    parser.add_argument(
-        "--seed-start",
-        type=int,
-        default=FINAL_SEED_START,
-        help="First seed in the contiguous seed range.",
-    )
-    parser.add_argument(
-        "--num-runs",
-        type=int,
-        default=FINAL_NUM_RUNS,
-        help="Number of seeds/runs to execute.",
-    )
-    parser.add_argument(
-        "--max-evaluations",
-        type=int,
-        default=FINAL_MAX_EVALUATIONS,
-        help="Total classifier evaluations per seed, including initial and restart evaluations.",
-    )
+    parser = argparse.ArgumentParser(description="Run or resume the final Hill Climbing experiment.")
+    parser.add_argument("--resume-run", help="Existing final Hill Climbing run timestamp to resume, for example 20260501_120000.",)
+    parser.add_argument("--seed-start", type=int, default=FINAL_SEED_START, help="First seed in the contiguous seed range.",)
+    parser.add_argument("--num-runs", type=int, default=FINAL_NUM_RUNS, help="Number of seeds/runs to execute.",)
+    parser.add_argument("--max-evaluations", type=int, default=FINAL_MAX_EVALUATIONS, help="Total classifier evaluations per seed, including initial and restart evaluations.",)
     return parser.parse_args()
 
 
@@ -172,11 +152,7 @@ def main():
     if experiment_status["status"] == "completed":
         return
 
-    subprocess.run(
-        [sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)],
-        check=True,
-        cwd=repo_root,
-    )
+    subprocess.run([sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)], check=True, cwd=repo_root,)
 
     save_manifest(manifest_path, manifest)
 

@@ -19,12 +19,7 @@ class ModelResources:
 
 
 def tokenize_for_roberta(resources, text):
-    return resources.tokenizer(
-        text,
-        return_tensors="pt",
-        truncation=True,
-        max_length=resources.model_max_length,
-    ).to(resources.device)
+    return resources.tokenizer(text, return_tensors="pt", truncation=True, max_length=resources.model_max_length,).to(resources.device)
 
 
 def _resolve_label_id(classifier_model, target_class):
@@ -35,10 +30,7 @@ def _resolve_label_id(classifier_model, target_class):
             return int(label_id)
 
     available_labels = ", ".join(str(label) for label in id2label.values())
-    raise ValueError(
-        f"Target classifier class '{target_class}' was not found in classifier labels: "
-        f"{available_labels}"
-    )
+    raise ValueError(f"Target classifier class '{target_class}' was not found in classifier labels: " f"{available_labels}")
 
 
 def load_resources(config):
@@ -58,20 +50,8 @@ def load_resources(config):
     config.setdefault("classifier_target_class", DEFAULT_CLASSIFIER_TARGET_CLASS)
 
     classifier_tokenizer = AutoTokenizer.from_pretrained(classifier_model_name)
-    classifier_model = AutoModelForSequenceClassification.from_pretrained(
-        classifier_model_name
-    ).to(device)
+    classifier_model = AutoModelForSequenceClassification.from_pretrained(classifier_model_name).to(device)
     classifier_model.eval()
-    config["classifier_target_label"] = _resolve_label_id(
-        classifier_model,
-        config["classifier_target_class"],
-    )
+    config["classifier_target_label"] = _resolve_label_id(classifier_model, config["classifier_target_class"],)
 
-    return ModelResources(
-        device=device,
-        tokenizer=tokenizer,
-        model=model,
-        model_max_length=model_max_length,
-        classifier_tokenizer=classifier_tokenizer,
-        classifier_model=classifier_model,
-    )
+    return ModelResources(device=device, tokenizer=tokenizer, model=model, model_max_length=model_max_length, classifier_tokenizer=classifier_tokenizer, classifier_model=classifier_model,)

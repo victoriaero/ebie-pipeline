@@ -1,17 +1,105 @@
+# =============================================================================
+# Main EBIE experiment configuration
+# =============================================================================
+# Conventions:
+# - Probabilities are in [0.0, 1.0].
+# - Percentage-like intensity values are fractions: 0.1 = 10%.
+# - Valid algorithms: genetic, rcga, hill_climbing, cma_es, random_search.
+# - Valid decoder families: lm_head, embedding_similarity.
+# - Valid decoder strategies: argmax, weighted_sampling.
+# - Valid initialization modes: random_1_token, random_3_tokens, llm_tokens.
+#
+# Example:
+#   python run_experiments.py --config config.yaml
+
+
+# =============================================================================
+# Execution, reproducibility, and output
+# =============================================================================
+experiment_name: etapa1_base
+output_file: historico_completo.json
+
+algorithms:
+  - genetic
+  # - rcga
+  # - hill_climbing
+  # - cma_es
+  # - random_search
+
+# If experiment_seeds is set, num_execucoes is ignored.
+experiment_seeds:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+num_execucoes: 1
+
+# Fallback used when experiment_seeds is not set or in standalone runs.
+random_seed:
+
+use_gpu_if_available: true
+
+# If true, saves generation/evaluation metrics used for hyperparameter selection.
+is_hyperparameter_selection: false
+
+# If false, removes the full run history from the final payload to save disk space.
+save_run_history: true
+
+# If omitted, the logger saves detailed artifacts except during hyperparameter selection.
+# Example:
+# save_detailed_run_artifacts: false
+
+
+# =============================================================================
+# Models and classification task
+# =============================================================================
+roberta_model_name: roberta-large
+classifier_model_name: j-hartmann/emotion-english-distilroberta-base
+classifier_target_class: joy
+
+# Used to estimate embedding statistics for random initialization.
+sample_sentence: "This is a sample sentence for computing embedding statistics."
+
+# Removed because they are redundant:
+# - emotion_model_name: the code sets it from classifier_model_name.
+# - classifier_target_label: the code resolves it from classifier_target_class.
+
+
+# =============================================================================
+# Population initialization
+# =============================================================================
 initialization_mode: random_1_token
+
+# Used when initialization_mode is random_1_token or random_3_tokens.
+# Controls the LM-head top-k used to generate initial tokens.
+top_k: 100
+
+# Used only when initialization_mode is llm_tokens.
 llm_initialization_model: meta-llama/Llama-3.1-8B-Instruct
 llm_initialization_target_class: joy
 llm_initialization_num_words: 3
 llm_initialization_max_new_tokens: 32
 
+
+# =============================================================================
+# Decoder / embedding-to-text reconstruction
+# =============================================================================
 run_decoder_ablation: false
 decoder_include_baseline: true
+
 decoder_config_name: current_decoder
 decoder_family: lm_head
 decoder_strategy: weighted_sampling
 decoder_top_k: 50
+
+# Used only with decoder_family: embedding_similarity.
+# Values: dot_product, cosine.
 decoder_similarity: dot_product
+
 filter_special_tokens: true
+
+# Used only when run_decoder_ablation: true.
 decoder_ablation_top_ks:
   - 10
   - 50
@@ -19,56 +107,128 @@ decoder_ablation_top_ks:
 decoder_ablation_strategies:
   - argmax
   - weighted_sampling
+
+
+# =============================================================================
+# Budget and success criterion
+# =============================================================================
 success_target_score: 0.9
-experiment_seeds:
-  - 0
-  - 1
-  - 2
-  - 3
-  - 4
 
-algorithms:
-  - genetic
-  # - vanilla_ga
-  # - hill_climbing
-  # - cma_es
-  # - random_search
-
-num_execucoes: 1
-num_geracoes: 300
+# Initial population size for genetic and rcga; also the initial pool used when
+# run_experiments chooses one starting text for single-start algorithms.
 populacao_inicial: 100
-# Hill climbing: orçamento total de avaliações do classificador.
-max_evaluations: 10001
-hill_climbing_neighbors: 100
-cma_es_population_size: 32
-cma_es_sigma: 0.5
-cma_es_elite_ratio: 0.5
-cma_es_cov_eps: 1.0e-6
-random_search_classifier_evals: 100
-random_search_batch_size: 50
-perturbacao_magnitude: 64
-prob_add_random_token: 0.3
-prob_remover_token: 0.3
-top_k: 100
+
+# Number of generations for genetic, rcga, and cma_es.
+num_geracoes: 300
+
+# Classifier batch size.
 speedup_factor: 50
 
-prob_crossover_embedding: 0.8
+# Optional total budget for algorithms that use the logger.
+# If set, overrides the budget computed from num_geracoes/populacao_inicial.
+# Example:
+# total_classifier_evaluation_budget: 10000
+
+# Informational field used in logs/script manifests.
+# Example:
+# classifier_evaluation_budget: 30000
+#
+# Informational field describing how to interpret the budget above.
+# Common values: descendants_only, total_with_optional_restart,
+# neighbor_steps, neighbor_steps_with_optional_restart,
+# total_random_samples_including_initial.
+# Example:
+# classifier_evaluation_budget_kind: descendants_only
+
+
+# =============================================================================
+# Common / centralized hyperparameters
+# =============================================================================
+# These values are shared by default across EBIE, Hill Climbing, and RCGA.
+# RCGA can override them through rcga_* keys below.
+
 prob_mutacao_embedding: 0.2
-max_percent_dimensions_crossover: 0.02
+prob_crossover_embedding: 0.8
+
+# Preferred over perturbacao_magnitude: scales the perturbation by the embedding RMS.
+# Example: 0.1 = 10%.
+mutation_intensity_percent: 0.1
+
+# Legacy fallback used only when mutation_intensity_percent is absent.
+perturbacao_magnitude: 64
+
 tournament_size: 2
-ga_crossover_prob: 0.8
-ga_mutation_prob: 0.2
-ga_embedding_mutation_std: 0.1
 
-roberta_model_name: roberta-large
-classifier_model_name: j-hartmann/emotion-english-distilroberta-base
-emotion_model_name: j-hartmann/emotion-english-distilroberta-base
-classifier_target_class: joy
-classifier_target_label: 3
-sample_sentence: "This is a sample sentence for computing embedding statistics."
+# Optional/informational in the logger; currently does not constrain generation/decoding.
+# Example:
+# min_num_tokens: 1
+# max_num_tokens: 64
 
-output_file: historico_completo.json
-random_seed:
-use_gpu_if_available: true
-experiment_name: etapa1_base
-is_hyperparameter_selection: false
+
+# =============================================================================
+# EBIE / genetic
+# =============================================================================
+# genetic uses the common hyperparameters above plus the size operators below.
+
+prob_add_random_token: 0.3
+prob_remover_token: 0.3
+max_percent_dimensions_crossover: 0.02
+
+
+# =============================================================================
+# RCGA
+# =============================================================================
+# By default, rcga reuses:
+# - rcga_mutation_prob <- prob_mutacao_embedding
+# - rcga_crossover_prob <- prob_crossover_embedding
+# - rcga_embedding_mutation_std <- mutation_intensity_percent
+#
+# Define these only when you want to override the common values.
+# Example:
+# rcga_mutation_prob: 0.2
+# rcga_crossover_prob: 0.8
+# rcga_embedding_mutation_std: 0.1
+
+
+# =============================================================================
+# Hill Climbing
+# =============================================================================
+max_evaluations: 10001
+hill_climbing_neighbors: 100
+hill_climbing_restart: false
+
+
+# =============================================================================
+# CMA-ES
+# =============================================================================
+cma_es_population_size: 32
+cma_es_sigma: 0.5
+
+# Optional: CMA-ES-specific seed. If absent, the run seed is used.
+# Example:
+# cma_es_seed: 0
+
+# Optional: overrides only the CMA-ES budget.
+# Example:
+# cma_es_classifier_evals: 10000
+
+# Optional: dictionary passed to cma.CMAEvolutionStrategy.
+# Example:
+# cma_es_options:
+#   tolx: 0
+#   tolfun: 0
+
+# Removed because they do not affect the current algorithm; they were only logged:
+# - cma_es_elite_ratio
+# - cma_es_cov_eps
+
+
+# =============================================================================
+# Random Search
+# =============================================================================
+random_search_classifier_evals: 100
+random_search_batch_size: 50
+
+# Informational in scripts/manifests; not read by the random_search core.
+# Example:
+# random_search_sampling_mode: independent_initialization_samples

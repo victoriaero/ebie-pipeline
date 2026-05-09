@@ -2,18 +2,10 @@ import copy
 import random
 
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import src.decoder as decoder
-from src.metrics import (
-    RunLogger,
-    build_initial_operator_records,
-    evaluate_and_log_decoded_embeddings,
-    evaluate_and_log_texts,
-    get_target_label_id,
-)
+from src.metrics import (RunLogger, build_initial_operator_records, evaluate_and_log_decoded_embeddings, evaluate_and_log_texts,)
 from src.resources import tokenize_for_roberta
 
 
@@ -23,30 +15,6 @@ def _get_mutation_magnitude(config, token_embedding):
         return max(rms_magnitude * config["mutation_intensity_percent"], 1.0e-8)
 
     return config["perturbacao_magnitude"]
-
-
-def avaliar_sentimento(resources, config, frases):
-    batch_size = config["speedup_factor"]
-    classifier_target_label = get_target_label_id(resources, config)
-    dataset = DataLoader(frases, batch_size=batch_size, shuffle=False)
-    resultados = []
-
-    for batch in dataset:
-        inputs = resources.classifier_tokenizer(
-            batch,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-            max_length=512,
-        )
-        inputs = {key: value.to(resources.device) for key, value in inputs.items()}
-        with torch.no_grad():
-            outputs = resources.classifier_model(**inputs)
-            scores = torch.nn.functional.softmax(outputs.logits, dim=1)
-            target_scores = scores[:, classifier_target_label].cpu().tolist()
-        resultados.extend(target_scores)
-
-    return resultados
 
 
 def mutacao_embeddings(resources, config, embeddings):
@@ -91,10 +59,7 @@ def gerar_variacao(resources, config, frase, return_embedding=False):
     else:
         idx = random.randint(0, novos_embeddings.shape[1] - 1)
         base_perturbacao_magnitude = _get_mutation_magnitude(config, novos_embeddings[0, idx])
-        descendente_perturbacao_magnitude = random.uniform(
-            0.5 * base_perturbacao_magnitude,
-            1.5 * base_perturbacao_magnitude,
-        )
+        descendente_perturbacao_magnitude = random.uniform(0.5 *base_perturbacao_magnitude, 1.5 *base_perturbacao_magnitude,)
         perturbacao = torch.randn(novos_embeddings[0, idx].shape).to(resources.device)
         perturbacao *= (
             torch.rand(novos_embeddings[0, idx].shape).to(resources.device)
@@ -165,15 +130,10 @@ def crossover(resources, config, frase1, frase2, return_details=False):
 def algoritmo_genetico(resources, config, populacao):
     historico_geracoes = {}
     logger = RunLogger(resources, config, len(populacao), populacao)
-    populacao_details = evaluate_and_log_texts(
-        logger,
-        generation=0,
-        texts=copy.deepcopy(populacao),
-        operator_records=build_initial_operator_records(len(populacao)),
-    )
+    populacao_details = evaluate_and_log_texts(logger, generation=0, texts=copy.deepcopy(populacao), operator_records=build_initial_operator_records(len(populacao)),)
     fitness = [candidate["objective_value"] for candidate in populacao_details]
 
-    for geracao in tqdm(range(config["num_geracoes"]), desc="Evoluindo"):
+    for geracao in tqdm(range(config["num_geracoes"]), desc="Evolving"):
         nova_populacao = []
         parent_records = []
 
@@ -186,93 +146,21 @@ def algoritmo_genetico(resources, config, populacao):
             pai2_detail = populacao_details[pai2_idx]
             logger.mark_selected_parent(pai1_detail["candidate_id"])
             logger.mark_selected_parent(pai2_detail["candidate_id"])
-            descendente, crossover_aplicado = crossover(
-                resources,
-                config,
-                pai1,
-                pai2,
-                return_details=True,
-            )
-            nova_frase, nova_embedding = gerar_variacao(
-                resources,
-                config,
-                descendente,
-                return_embedding=True,
-            )
+            descendente, crossover_aplicado = crossover(resources, config, pai1, pai2, return_details=True,)
+            nova_frase, nova_embedding = gerar_variacao(resources, config, descendente, return_embedding=True,)
 
-            parent_records.append(
-                {
-                    "pai1_idx": pai1_idx,
-                    "pai2_idx": pai2_idx,
-                    "parent_ids": [pai1_detail["candidate_id"], pai2_detail["candidate_id"]],
-                    "parent1_id": pai1_detail["candidate_id"],
-                    "parent2_id": pai2_detail["candidate_id"],
-                    "operator_used": "variation",
-                    "mutation_type": "ebie_embedding_variation",
-                    "crossover_type": (
-                        "ebie_dimension_crossover" if crossover_aplicado else "textual_fallback"
-                    ),
-                    "mutation_applied": True,
-                    "crossover_applied": crossover_aplicado,
-                }
-            )
+            parent_records.append({"pai1_idx":pai1_idx, "pai2_idx":pai2_idx, "parent_ids":[pai1_detail["candidate_id"], pai2_detail["candidate_id"]], "parent1_id":pai1_detail["candidate_id"], "parent2_id":pai2_detail["candidate_id"], "operator_used":"variation", "mutation_type":"ebie_embedding_variation", "crossover_type":("ebie_dimension_crossover" if crossover_aplicado else "textual_fallback"), "mutation_applied":True, "crossover_applied":crossover_aplicado,})
             nova_populacao.append(nova_frase)
             parent_records[-1]["embedding"] = nova_embedding
 
-        nova_populacao_details = evaluate_and_log_decoded_embeddings(
-            logger,
-            generation=geracao + 1,
-            texts=nova_populacao,
-            embeddings=[record["embedding"] for record in parent_records],
-            operator_records=parent_records,
-        )
+        nova_populacao_details = evaluate_and_log_decoded_embeddings(logger, generation=geracao + 1, texts=nova_populacao, embeddings=[record["embedding"] for record in parent_records], operator_records=parent_records,)
         descendentes_info = []
-        for candidate_detail, parent_record in zip(
-            nova_populacao_details,
-            parent_records,
-            strict=True,
-        ):
+        for candidate_detail, parent_record in zip(nova_populacao_details, parent_records, strict=True,):
             pai1_detail = populacao_details[parent_record["pai1_idx"]]
             pai2_detail = populacao_details[parent_record["pai2_idx"]]
-            descendentes_info.append(
-                {
-                    "candidate_id": candidate_detail["candidate_id"],
-                    "descendente": candidate_detail["decoded_text"],
-                    "score_descendente": candidate_detail["target_class_score"],
-                    "objective_value": candidate_detail["objective_value"],
-                    "tokens_descendente": candidate_detail["tokens_descendente"],
-                    "pai1": pai1_detail["decoded_text"],
-                    "pai1_id": pai1_detail["candidate_id"],
-                    "score_pai1": pai1_detail["target_class_score"],
-                    "tokens_pai1": len(resources.tokenizer.tokenize(pai1_detail["decoded_text"])),
-                    "evaluation_index_pai1": pai1_detail["evaluation_id"],
-                    "pai2": pai2_detail["decoded_text"],
-                    "pai2_id": pai2_detail["candidate_id"],
-                    "score_pai2": pai2_detail["target_class_score"],
-                    "tokens_pai2": len(resources.tokenizer.tokenize(pai2_detail["decoded_text"])),
-                    "evaluation_index_pai2": pai2_detail["evaluation_id"],
-                    "evaluation_index_descendente": candidate_detail["evaluation_id"],
-                    "crossover_applied": parent_record["crossover_applied"],
-                    "mutation_applied": parent_record["mutation_applied"],
-                    "elitism": False,
-                }
-            )
+            descendentes_info.append({"candidate_id":candidate_detail["candidate_id"], "descendente":candidate_detail["decoded_text"], "score_descendente":candidate_detail["target_class_score"], "objective_value":candidate_detail["objective_value"], "tokens_descendente":candidate_detail["tokens_descendente"], "pai1":pai1_detail["decoded_text"], "pai1_id":pai1_detail["candidate_id"], "score_pai1":pai1_detail["target_class_score"], "tokens_pai1":len(resources.tokenizer.tokenize(pai1_detail["decoded_text"])), "evaluation_index_pai1":pai1_detail["evaluation_id"], "pai2":pai2_detail["decoded_text"], "pai2_id":pai2_detail["candidate_id"], "score_pai2":pai2_detail["target_class_score"], "tokens_pai2":len(resources.tokenizer.tokenize(pai2_detail["decoded_text"])), "evaluation_index_pai2":pai2_detail["evaluation_id"], "evaluation_index_descendente":candidate_detail["evaluation_id"], "crossover_applied":parent_record["crossover_applied"], "mutation_applied":parent_record["mutation_applied"], "elitism":False,})
 
-        descendant_scores = avaliar_sentimento(resources, config, nova_populacao)
-        descendant_evaluation_offset = evaluations_count
-        evaluations_count += len(nova_populacao)
-
-        for idx, (candidate_info, score_descendente) in enumerate(
-            zip(descendentes_info, descendant_scores, strict=True)
-        ):
-            candidate_info["score_descendente"] = score_descendente
-            candidate_info["evaluation_index_descendente"] = descendant_evaluation_offset + idx + 1
-
-        top_5_descendentes = sorted(
-            descendentes_info,
-            key=lambda x: x["score_descendente"],
-            reverse=True,
-        )[:5]
+        top_5_descendentes = sorted(descendentes_info, key=lambda x:x["score_descendente"], reverse=True,)[:5]
         historico_geracoes[f"geracao_{geracao + 1}"] = {
             "top_5": top_5_descendentes,
             "all_candidates": descendentes_info,

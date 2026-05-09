@@ -149,16 +149,7 @@ def _csv_value(value):
 def _write_csv(path, rows, fieldnames):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(
-            file,
-            fieldnames=fieldnames,
-            extrasaction="ignore",
-            quoting=csv.QUOTE_MINIMAL,
-            quotechar='"',
-            doublequote=True,
-            escapechar="\\",
-            lineterminator="\n",
-        )
+        writer = csv.DictWriter(file, fieldnames=fieldnames, extrasaction="ignore", quoting=csv.QUOTE_MINIMAL, quotechar='"', doublequote=True, escapechar="\\", lineterminator="\n",)
         writer.writeheader()
         for row in rows:
             writer.writerow({field: _csv_value(row.get(field)) for field in fieldnames})
@@ -182,13 +173,7 @@ def _get_git_commit_hash(repo_root):
     if repo_root is None:
         return None
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repo_root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, check=True, capture_output=True, text=True,)
         return result.stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return None
@@ -211,10 +196,7 @@ def get_target_label_id(resources, config):
             if str(label_name).strip().lower() == target_class:
                 return int(label_id)
         available_labels = ", ".join(str(label) for label in id2label.values())
-        raise ValueError(
-            f"Target classifier class '{config['classifier_target_class']}' was not "
-            f"found in classifier labels: {available_labels}"
-        )
+        raise ValueError(f"Target classifier class '{config['classifier_target_class']}' was not " f"found in classifier labels: {available_labels}")
     return int(config.get("classifier_target_label", 0))
 
 
@@ -231,10 +213,7 @@ def _get_evaluation_budget(config, population_size):
     if config.get("total_classifier_evaluation_budget") is not None:
         return config["total_classifier_evaluation_budget"]
     if method == "hill_climbing":
-        return config.get(
-            "max_evaluations",
-            1 + config["num_geracoes"] * config["hill_climbing_neighbors"],
-        )
+        return config.get("max_evaluations", 1 + config["num_geracoes"] *config["hill_climbing_neighbors"],)
     if method == "random_search":
         return config.get("random_search_classifier_evals")
     if method == "cma_es":
@@ -256,18 +235,15 @@ def _build_run_dir(config, experiment_id, method, seed, timestamp_start):
 
 
 def _method_hyperparameters(config, population_size):
-    ga_crossover_prob = config.get("ga_crossover_prob", config.get("prob_crossover_embedding", 0.0))
-    ga_mutation_prob = config.get("ga_mutation_prob", config.get("prob_mutacao_embedding", 0.0))
-    ga_mutation_std = config.get(
-        "ga_embedding_mutation_std",
-        config.get("mutation_intensity_percent", 0.1),
-    )
+    rcga_crossover_prob = config.get("rcga_crossover_prob", config.get("prob_crossover_embedding", 0.0))
+    rcga_mutation_prob = config.get("rcga_mutation_prob", config.get("prob_mutacao_embedding", 0.0))
+    rcga_embedding_mutation_std = config.get("rcga_embedding_mutation_std", config.get("mutation_intensity_percent", 0.1),)
     return {
         "population_size": population_size,
         "num_generations": config["num_geracoes"],
-        "crossover_probability": ga_crossover_prob,
-        "mutation_probability": ga_mutation_prob,
-        "mutation_intensity": ga_mutation_std,
+        "crossover_probability": rcga_crossover_prob,
+        "mutation_probability": rcga_mutation_prob,
+        "mutation_intensity": rcga_embedding_mutation_std,
         "add_token_probability": 0.0,
         "remove_token_probability": 0.0,
         "tournament_size": config.get("tournament_size", 2),
@@ -277,9 +253,9 @@ def _method_hyperparameters(config, population_size):
         "decoder_strategy": config.get("decoder_strategy"),
         "decoder_family": config.get("decoder_family"),
         "decoder_top_k": config.get("decoder_top_k"),
-        "ga_embedding_mutation_std": ga_mutation_std,
-        "ga_crossover_prob": ga_crossover_prob,
-        "ga_mutation_prob": ga_mutation_prob,
+        "rcga_embedding_mutation_std": rcga_embedding_mutation_std,
+        "rcga_crossover_prob": rcga_crossover_prob,
+        "rcga_mutation_prob": rcga_mutation_prob,
         "classifier_evaluation_budget": config.get("classifier_evaluation_budget"),
         "classifier_evaluation_budget_kind": config.get("classifier_evaluation_budget_kind"),
         "hill_climbing_neighbors": config.get("hill_climbing_neighbors"),
@@ -301,13 +277,7 @@ def _should_persist_detailed_run_artifacts(config):
 
 
 def population_to_embeddings(resources, population):
-    inputs = resources.tokenizer(
-        population,
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        max_length=resources.model_max_length,
-    ).to(resources.device)
+    inputs = resources.tokenizer(population, return_tensors="pt", padding=True, truncation=True, max_length=resources.model_max_length,).to(resources.device)
     with torch.no_grad():
         outputs = resources.model.roberta(**inputs)
     return [embedding.detach().clone() for embedding in outputs.last_hidden_state]
@@ -324,13 +294,7 @@ def _classify_texts(resources, config, texts):
 
     for start in range(0, len(texts), batch_size):
         batch_texts = texts[start:start + batch_size]
-        inputs = resources.classifier_tokenizer(
-            batch_texts,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-            max_length=512,
-        )
+        inputs = resources.classifier_tokenizer(batch_texts, return_tensors="pt", truncation=True, padding=True, max_length=512,)
         inputs = {key: value.to(resources.device) for key, value in inputs.items()}
         with torch.no_grad():
             outputs = resources.classifier_model(**inputs)
@@ -344,17 +308,7 @@ def _classify_texts(resources, config, texts):
             ]
             second_best_other = max(other_scores) if other_scores else 0.0
             ranked_label_ids = sorted(range(len(scores)), key=lambda idx: scores[idx], reverse=True)
-            details.append(
-                {
-                    "target_class_score": target_score,
-                    "predicted_class": _get_label_name(resources, predicted_label_id),
-                    "predicted_class_score": scores[predicted_label_id],
-                    "all_class_scores": scores,
-                    "target_class_rank": ranked_label_ids.index(target_label_id) + 1,
-                    "score_margin_target_vs_second_best": target_score - second_best_other,
-                    "objective_value": target_score,
-                }
-            )
+            details.append({"target_class_score":target_score, "predicted_class":_get_label_name(resources, predicted_label_id), "predicted_class_score":scores[predicted_label_id], "all_class_scores":scores, "target_class_rank":ranked_label_ids.index(target_label_id) + 1, "score_margin_target_vs_second_best":target_score - second_best_other, "objective_value":target_score,})
 
     return details
 
@@ -365,7 +319,7 @@ class RunLogger:
         self.config = config
         self.population_size = population_size
         self.initial_population = list(initial_population)
-        algorithm_name = config.get("_algorithm_name", "vanilla_ga")
+        algorithm_name = config.get("_algorithm_name", "rcga")
         self.method = "ebie" if algorithm_name == "genetic" else algorithm_name
         self.experiment_id = config.get("experiment_name", "unknown_experiment")
         self.seed = config.get("_current_seed", config.get("random_seed"))
@@ -375,13 +329,7 @@ class RunLogger:
         self.timestamp_start = _now_iso()
         self.start_time = time.time()
         self.persist_detailed_artifacts = _should_persist_detailed_run_artifacts(config)
-        self.run_id, self.run_dir = _build_run_dir(
-            config,
-            self.experiment_id,
-            self.method,
-            self.seed,
-            self.timestamp_start,
-        )
+        self.run_id, self.run_dir = _build_run_dir(config, self.experiment_id, self.method, self.seed, self.timestamp_start,)
         self.individual_log_path = self.run_dir / "individual_log.csv"
         self.generation_summary_path = self.run_dir / "generation_summary.csv"
         self.run_summary_path = self.run_dir / "run_summary.json"
@@ -407,10 +355,7 @@ class RunLogger:
 
     def _build_config_payload(self, timestamp_end):
         repo_root = self.config.get("_base_dir")
-        classifier_name = self.config.get(
-            "classifier_model_name",
-            self.config.get("emotion_model_name"),
-        )
+        classifier_name = self.config.get("classifier_model_name", self.config.get("emotion_model_name"),)
         embedding_model = self.config.get("roberta_model_name")
         return {
             "run_id": self.run_id,
@@ -502,22 +447,13 @@ class RunLogger:
             embedding_offsets = np.empty((0,), dtype=np.int64)
             embedding_lengths = np.empty((0,), dtype=np.int64)
         else:
-            embedding_lengths = np.asarray(
-                [row.shape[0] for row in self.embedding_rows],
-                dtype=np.int64,
-            )
+            embedding_lengths = np.asarray([row.shape[0] for row in self.embedding_rows], dtype=np.int64,)
             embedding_offsets = np.zeros(len(embedding_lengths), dtype=np.int64)
             if len(embedding_lengths) > 1:
                 embedding_offsets[1:] = np.cumsum(embedding_lengths[:-1])
             embeddings_flat = np.concatenate(self.embedding_rows).astype(np.float32, copy=False)
         self.embeddings_path.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(
-            self.embeddings_path,
-            embeddings_flat=embeddings_flat,
-            embedding_offsets=embedding_offsets,
-            embedding_lengths=embedding_lengths,
-            embedding_storage_format=np.asarray("flat_offsets_lengths"),
-        )
+        np.savez_compressed(self.embeddings_path, embeddings_flat=embeddings_flat, embedding_offsets=embedding_offsets, embedding_lengths=embedding_lengths, embedding_storage_format=np.asarray("flat_offsets_lengths"),)
 
     def mark_selected_parent(self, candidate_id):
         self.selected_parent_ids.add(candidate_id)
@@ -569,9 +505,9 @@ class RunLogger:
             "hill_stop_reason": (
                 "evaluation_budget_exhausted" if self.method == "hill_climbing" else None
             ),
-            "ga_stop_reason": (
+            "evolutionary_stop_reason": (
                 "num_generations_completed"
-                if self.method in {"vanilla_ga", "ebie", "genetic"}
+                if self.method in {"rcga", "ebie", "genetic"}
                 else None
             ),
             "random_search_stop_reason": (
@@ -587,18 +523,7 @@ class RunLogger:
         if self.persist_detailed_artifacts:
             _write_json(self.run_summary_path, summary)
         self.config_payload = self._build_config_payload(timestamp_end=timestamp_end)
-        self.config_payload.update(
-            {
-                "initial_embedding_path": str(self.embeddings_path),
-                "initial_embedding_row_index": 0 if self.embedding_rows else None,
-                "initial_target_class_score": summary["initial_target_class_score"],
-                "initial_predicted_class": summary["initial_predicted_class"],
-                "initial_all_class_scores": summary["initial_all_class_scores"],
-                "best_candidate_id": self.best_candidate_id,
-                "best_embedding_path": best_embedding_path,
-                "best_embedding_row_index": self.best_embedding_row_index,
-            }
-        )
+        self.config_payload.update({"initial_embedding_path":str(self.embeddings_path), "initial_embedding_row_index":0 if self.embedding_rows else None, "initial_target_class_score":summary["initial_target_class_score"], "initial_predicted_class":summary["initial_predicted_class"], "initial_all_class_scores":summary["initial_all_class_scores"], "best_candidate_id":self.best_candidate_id, "best_embedding_path":best_embedding_path, "best_embedding_row_index":self.best_embedding_row_index,})
         if self.persist_detailed_artifacts:
             _write_json(self.config_path, self.config_payload)
 
@@ -647,21 +572,9 @@ def _decode_embeddings(resources, config, embeddings):
     decoded = []
     for embedding in embeddings:
         try:
-            decoded.append(
-                {
-                    "decoded_text": _embedding_to_text(resources, config, embedding),
-                    "decode_success": True,
-                    "decode_error": None,
-                }
-            )
+            decoded.append({"decoded_text":_embedding_to_text(resources, config, embedding), "decode_success":True, "decode_error":None,})
         except Exception as exc:
-            decoded.append(
-                {
-                    "decoded_text": "",
-                    "decode_success": False,
-                    "decode_error": str(exc),
-                }
-            )
+            decoded.append({"decoded_text":"", "decode_success":False, "decode_error":str(exc),})
     return decoded
 
 
@@ -706,13 +619,7 @@ def evaluate_and_log_texts(
         normalized_record = dict(record)
         normalized_record.setdefault("embedding_source", embedding_source)
         normalized_records.append(normalized_record)
-    return _log_candidate_records(
-        logger,
-        generation,
-        embeddings,
-        decoded_records,
-        normalized_records,
-    )
+    return _log_candidate_records(logger, generation, embeddings, decoded_records, normalized_records,)
 
 
 def evaluate_and_log_decoded_embeddings(
@@ -736,13 +643,7 @@ def evaluate_and_log_decoded_embeddings(
         normalized_record = dict(record)
         normalized_record.setdefault("embedding_source", embedding_source)
         normalized_records.append(normalized_record)
-    return _log_candidate_records(
-        logger,
-        generation,
-        embeddings,
-        decoded_records,
-        normalized_records,
-    )
+    return _log_candidate_records(logger, generation, embeddings, decoded_records, normalized_records,)
 
 
 def build_initial_operator_records(count):
@@ -774,9 +675,7 @@ def _log_candidate_records(logger, generation, embeddings, decoded_records, oper
 
     rows = []
     candidate_details = []
-    for index, (embedding, decoded, operator_record) in enumerate(
-        zip(embeddings, decoded_records, operator_records, strict=True)
-    ):
+    for index, (embedding, decoded, operator_record) in enumerate(zip(embeddings, decoded_records, operator_records, strict=True)):
         candidate_id = logger.next_candidate_id()
         embedding_row_index, embedding_dim, embedding_norm = logger.append_embedding(embedding)
         decoded_text = decoded["decoded_text"]
@@ -858,33 +757,16 @@ def _log_candidate_records(logger, generation, embeddings, decoded_records, oper
         row["best_so_far_generation"] = logger.best_generation
         row["best_so_far_evaluation_id"] = logger.best_evaluation_id
         rows.append(row)
-        candidate_details.append(
-            {
-                "candidate_id": candidate_id,
-                "embedding": embedding,
-                "decoded_text": decoded_text,
-                "target_class_score": row["target_class_score"],
-                "objective_value": row["objective_value"],
-                "evaluation_id": evaluation_id,
-                "tokens_descendente": row["num_tokens"],
-                "row": row,
-            }
-        )
+        candidate_details.append({"candidate_id":candidate_id, "embedding":embedding, "decoded_text":decoded_text, "target_class_score":row["target_class_score"], "objective_value":row["objective_value"], "evaluation_id":evaluation_id, "tokens_descendente":row["num_tokens"], "row":row,})
 
     _assign_generation_ranks(candidate_details)
     logger.add_rows(rows)
-    logger.add_generation_summary(
-        _build_generation_summary(logger, generation, candidate_details)
-    )
+    logger.add_generation_summary(_build_generation_summary(logger, generation, candidate_details))
     return candidate_details
 
 
 def _assign_generation_ranks(candidate_details):
-    ranked = sorted(
-        candidate_details,
-        key=lambda item: item["objective_value"],
-        reverse=True,
-    )
+    ranked = sorted(candidate_details, key=lambda item:item["objective_value"], reverse=True,)
     for rank, item in enumerate(ranked, start=1):
         item["row"]["rank_in_generation"] = rank
         item["row"]["fitness_rank"] = rank
@@ -990,28 +872,7 @@ def summarize_generation_metrics(history, target_score):
                     evaluations_to_target_so_far = candidate.get("evaluation_index_descendente")
                     break
 
-        generation_summaries.append(
-            {
-                "generation": generation_name,
-                "best_fitness_generation": generation_best,
-                "best_fitness_so_far": best_fitness_so_far,
-                "evaluations_cumulative": generation_data.get("evaluations_cumulative"),
-                "success_generation": (
-                    generation_best >= target_score
-                    if target_score is not None and generation_best is not None
-                    else None
-                ),
-                "success_so_far": (
-                    best_fitness_so_far >= target_score
-                    if target_score is not None and best_fitness_so_far is not None
-                    else None
-                ),
-                "evaluations_to_target_so_far": evaluations_to_target_so_far,
-                "average_length_generation": average_length(candidates),
-                "lexical_diversity_generation": lexical_diversity(candidates),
-                "num_candidates_generation": len(candidates),
-            }
-        )
+        generation_summaries.append({"generation":generation_name, "best_fitness_generation":generation_best, "best_fitness_so_far":best_fitness_so_far, "evaluations_cumulative":generation_data.get("evaluations_cumulative"), "success_generation":(generation_best >= target_score if target_score is not None and generation_best is not None else None), "success_so_far":(best_fitness_so_far >= target_score if target_score is not None and best_fitness_so_far is not None else None), "evaluations_to_target_so_far":evaluations_to_target_so_far, "average_length_generation":average_length(candidates), "lexical_diversity_generation":lexical_diversity(candidates), "num_candidates_generation":len(candidates),})
 
     return generation_summaries
 
@@ -1021,13 +882,7 @@ def summarize_evaluation_metrics(history, target_score):
     best_fitness_so_far = None
     evaluations_to_target_so_far = None
 
-    candidates_with_generation = sorted(
-        iter_candidates_with_generation(history),
-        key=lambda item: (
-            item[1].get("evaluation_index_descendente", math.inf),
-            item[0],
-        ),
-    )
+    candidates_with_generation = sorted(iter_candidates_with_generation(history), key=lambda item:(item[1].get("evaluation_index_descendente", math.inf), item[0],),)
 
     for generation_name, candidate in candidates_with_generation:
         evaluation_index = candidate.get("evaluation_index_descendente")
@@ -1047,26 +902,7 @@ def summarize_evaluation_metrics(history, target_score):
         ):
             evaluations_to_target_so_far = evaluation_index
 
-        evaluation_summaries.append(
-            {
-                "evaluation": evaluation_index,
-                "generation": generation_name,
-                "score": score,
-                "best_fitness_so_far": best_fitness_so_far,
-                "success_evaluation": (
-                    score >= target_score
-                    if target_score is not None and score is not None
-                    else None
-                ),
-                "success_so_far": (
-                    best_fitness_so_far >= target_score
-                    if target_score is not None and best_fitness_so_far is not None
-                    else None
-                ),
-                "evaluations_to_target_so_far": evaluations_to_target_so_far,
-                "tokens_descendente": candidate.get("tokens_descendente"),
-            }
-        )
+        evaluation_summaries.append({"evaluation":evaluation_index, "generation":generation_name, "score":score, "best_fitness_so_far":best_fitness_so_far, "success_evaluation":(score >= target_score if target_score is not None and score is not None else None), "success_so_far":(best_fitness_so_far >= target_score if target_score is not None and best_fitness_so_far is not None else None), "evaluations_to_target_so_far":evaluations_to_target_so_far, "tokens_descendente":candidate.get("tokens_descendente"),})
 
     return evaluation_summaries
 
@@ -1098,10 +934,7 @@ def summarize_run(history, target_score):
     final_generation_candidates = []
     sorted_generations = sorted(history.items(), key=_generation_sort_key)
     if sorted_generations:
-        final_generation_candidates = sorted_generations[-1][1].get(
-            "all_candidates",
-            sorted_generations[-1][1].get("top_5", []),
-        )
+        final_generation_candidates = sorted_generations[-1][1].get("all_candidates", sorted_generations[- 1][1].get("top_5",[]),)
 
     return {
         "best_fitness": best_fitness,

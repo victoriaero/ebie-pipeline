@@ -3,21 +3,15 @@ import json
 from datetime import datetime
 from pathlib import Path
 import random
-
 import yaml
 
 from src.cma_es import cma_es
 from src.ebie import algoritmo_genetico
-from src.experiment_utils import set_global_seed
-from src.ga import vanilla_ga
+from src.experiment_utils import configure_deterministic_backend, set_global_seed
+from src.rcga import rcga
 from src.hill import hill_climbing
 from src.initialization import generate_initial_population
-from src.metrics import (
-    summarize_evaluation_metrics,
-    summarize_generation_metrics,
-    summarize_run,
-    summarize_runs,
-)
+from src.metrics import summarize_evaluation_metrics, summarize_generation_metrics, summarize_run, summarize_runs
 from src.random_search import random_search
 from src.resources import load_resources
 
@@ -34,10 +28,8 @@ def build_output_path(config, algorithm_name, decoder_name):
     output_path = (config["_base_dir"] / config["output_file"]).resolve()
     experiment_name = config.get("experiment_name")
     if experiment_name:
-        suffix = (
-            f"{output_path.stem}_{algorithm_name}_{decoder_name}_{experiment_name}"
-            f"{output_path.suffix}"
-        )
+        suffix = (f"{output_path.stem}_{algorithm_name}_{decoder_name}_{experiment_name}"
+            f"{output_path.suffix}")
     else:
         suffix = f"{output_path.stem}_{algorithm_name}_{decoder_name}{output_path.suffix}"
     return str(output_path.with_name(suffix))
@@ -45,11 +37,7 @@ def build_output_path(config, algorithm_name, decoder_name):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run EBIE experiments from a YAML config.")
-    parser.add_argument(
-        "--config",
-        default="config.yaml",
-        help="Path to the YAML configuration file.",
-    )
+    parser.add_argument("--config", default="config.yaml", help="Path to the YAML configuration file.")
     return parser.parse_args()
 
 
@@ -66,18 +54,12 @@ def load_json_payload(path):
 
 def load_existing_payload(output_file):
     output_path = Path(output_file)
-    candidates = [
-        load_json_payload(output_path),
-        load_json_payload(output_path.with_name(f"{output_path.name}.tmp")),
-    ]
+    candidates = [load_json_payload(output_path), load_json_payload(output_path.with_name(f"{output_path.name}.tmp"))]
     candidates = [payload for payload in candidates if payload is not None]
     if not candidates:
         return None
 
-    return max(
-        candidates,
-        key=lambda payload: payload.get("progress", {}).get("completed_runs", 0),
-    )
+    return max(candidates, key=lambda payload: payload.get("progress", {}).get("completed_runs", 0))
 
 
 def serialize_run_config(run_config):
@@ -90,42 +72,22 @@ def serialize_run_config(run_config):
 
 def get_decoder_configs(config):
     if not config["run_decoder_ablation"]:
-        return [
-            {
+        return [{
                 "name": config["decoder_config_name"],
                 "decoder_family": config["decoder_family"],
                 "decoder_strategy": config["decoder_strategy"],
                 "decoder_top_k": config["decoder_top_k"],
                 "decoder_similarity": config["decoder_similarity"],
                 "filter_special_tokens": config["filter_special_tokens"],
-            }
-        ]
+            }]
 
     decoder_configs = []
     if config["decoder_include_baseline"]:
-        decoder_configs.append(
-            {
-                "name": "lm_head_weighted_sampling_top50",
-                "decoder_family": "lm_head",
-                "decoder_strategy": "weighted_sampling",
-                "decoder_top_k": 50,
-                "decoder_similarity": config["decoder_similarity"],
-                "filter_special_tokens": True,
-            }
-        )
+        decoder_configs.append({"name":"lm_head_weighted_sampling_top50", "decoder_family":"lm_head", "decoder_strategy":"weighted_sampling", "decoder_top_k":50, "decoder_similarity":config["decoder_similarity"], "filter_special_tokens":True,})
 
     for strategy in config["decoder_ablation_strategies"]:
         for top_k in config["decoder_ablation_top_ks"]:
-            decoder_configs.append(
-                {
-                    "name": f"embedding_similarity_{strategy}_top{top_k}",
-                    "decoder_family": "embedding_similarity",
-                    "decoder_strategy": strategy,
-                    "decoder_top_k": top_k,
-                    "decoder_similarity": config["decoder_similarity"],
-                    "filter_special_tokens": True,
-                }
-            )
+            decoder_configs.append({"name":f"embedding_similarity_{strategy}_top{top_k}", "decoder_family":"embedding_similarity", "decoder_strategy":strategy, "decoder_top_k":top_k, "decoder_similarity":config["decoder_similarity"], "filter_special_tokens":True,})
 
     return decoder_configs
 
@@ -144,8 +106,8 @@ def execute_single_run(algorithm_name, resources, config):
     if algorithm_name == "genetic":
         return algoritmo_genetico(resources, config, initial_population)
 
-    if algorithm_name == "vanilla_ga":
-        return vanilla_ga(resources, config, initial_population)
+    if algorithm_name == "rcga":
+        return rcga(resources, config, initial_population)
 
     if algorithm_name == "hill_climbing":
         return hill_climbing(resources, config, random.choice(initial_population))
@@ -156,7 +118,7 @@ def execute_single_run(algorithm_name, resources, config):
     if algorithm_name == "random_search":
         return random_search(resources, config, random.choice(initial_population))
 
-    raise ValueError(f"Algoritmo não suportado: {algorithm_name}")
+    raise ValueError(f"Unsupported algorithm: {algorithm_name}")
 
 
 def save_payload(output_file, payload):
@@ -222,6 +184,7 @@ def build_run_payload(run_config, seed, history, generation_metrics, evaluation_
 def main():
     args = parse_args()
     config = load_config(args.config)
+    configure_deterministic_backend()
     resources = load_resources(config)
     decoder_configs = get_decoder_configs(config)
     seeds = get_experiment_seeds(config)
@@ -236,15 +199,7 @@ def main():
             completed_seeds = {run["seed"] for run in runs_payload}
 
             if len(completed_seeds) == len(seeds):
-                payload = build_payload(
-                    run_config,
-                    algorithm_name,
-                    decoder_config,
-                    runs_payload,
-                    run_summaries,
-                    seeds,
-                    status="completed",
-                )
+                payload = build_payload(run_config, algorithm_name, decoder_config, runs_payload, run_summaries, seeds, status="completed")
                 save_payload(output_file, payload)
                 continue
 
@@ -259,54 +214,18 @@ def main():
                 seed_run_config["_resolved_output_file"] = output_file
                 history = execute_single_run(algorithm_name, resources, seed_run_config)
                 run_summary = summarize_run(history, seed_run_config["success_target_score"])
-                is_hyperparameter_selection = bool(
-                    seed_run_config.get("is_hyperparameter_selection", False)
-                )
+                is_hyperparameter_selection = bool(seed_run_config.get("is_hyperparameter_selection", False))
                 generation_metrics = None
                 evaluation_metrics = None
                 if is_hyperparameter_selection:
-                    generation_metrics = summarize_generation_metrics(
-                        history,
-                        seed_run_config["success_target_score"],
-                    )
-                    evaluation_metrics = summarize_evaluation_metrics(
-                        history,
-                        seed_run_config["success_target_score"],
-                    )
-                runs_payload.append(
-                    build_run_payload(
-                        seed_run_config,
-                        seed,
-                        history,
-                        generation_metrics,
-                        evaluation_metrics,
-                        run_summary,
-                    )
-                )
+                    generation_metrics = summarize_generation_metrics(history, seed_run_config["success_target_score"])
+                    evaluation_metrics = summarize_evaluation_metrics(history, seed_run_config["success_target_score"])
+                runs_payload.append(build_run_payload(seed_run_config, seed, history, generation_metrics, evaluation_metrics, run_summary))
                 run_summaries.append(run_summary)
                 completed_seeds.add(seed)
-                save_payload(
-                    output_file,
-                    build_payload(
-                        run_config,
-                        algorithm_name,
-                        decoder_config,
-                        runs_payload,
-                        run_summaries,
-                        seeds,
-                        status="running",
-                    ),
-                )
+                save_payload(output_file, build_payload(run_config, algorithm_name, decoder_config, runs_payload, run_summaries, seeds, status="running"))
 
-            payload = build_payload(
-                run_config,
-                algorithm_name,
-                decoder_config,
-                runs_payload,
-                run_summaries,
-                seeds,
-                status="completed",
-            )
+            payload = build_payload(run_config, algorithm_name, decoder_config, runs_payload, run_summaries, seeds, status="completed",)
             save_payload(output_file, payload)
 
 

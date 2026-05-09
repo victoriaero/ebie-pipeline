@@ -1,16 +1,11 @@
-import random
 from importlib.metadata import packages_distributions
 
 import numpy as np
 import torch
 from tqdm import tqdm
 
-import src.decoder as decoder
-from src.metrics import (
-    RunLogger,
-    build_initial_operator_records,
-    evaluate_and_log_embeddings,
-)
+from src.experiment_utils import set_global_seed
+from src.metrics import (RunLogger, build_initial_operator_records, evaluate_and_log_embeddings,)
 from src.resources import tokenize_for_roberta
 
 
@@ -22,20 +17,14 @@ def frase_para_embedding(resources, frase):
     return embeddings
 
 
-def embedding_para_frase(resources, config, embedding):
-    return decoder.decode_embeddings_to_text(resources, config, embedding)
-
-
 def _set_cma_seed(config):
-    seed = config.get("cma_es_seed", config.get("random_seed"))
+    seed = config.get("cma_es_seed")
+    if seed is None:
+        seed = config.get("_current_seed", config.get("random_seed"))
     if seed is None:
         seed = int(np.random.randint(0, 2**31 - 1))
-    else:
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
+
+    set_global_seed(seed)
     return seed
 
 
@@ -43,19 +32,12 @@ def _load_pycma():
     distributions = packages_distributions().get("cma", [])
     if "cma" not in distributions:
         installed = ", ".join(distributions) if distributions else "nenhuma"
-        raise ImportError(
-            "O pacote CMA-ES correto não está disponível. "
-            f"O módulo 'cma' atual vem de: {installed}. "
-            "Instale o pycma com `pip uninstall cma-es` e `pip install cma`."
-        )
+        raise ImportError("The correct CMA-ES package is not available. " f"The current 'cma' module comes from: {installed}. " "Install pycma with `pip uninstall cma-es` and `pip install cma`.")
 
     import cma
 
     if not hasattr(cma, "CMAEvolutionStrategy"):
-        raise ImportError(
-            "O módulo 'cma' importado não expõe CMAEvolutionStrategy. "
-            "Instale o pycma com `pip uninstall cma-es` e `pip install cma`."
-        )
+        raise ImportError("The imported 'cma' module does not expose CMAEvolutionStrategy. " "Install pycma with `pip uninstall cma-es` and `pip install cma`.")
     return cma
 
 
@@ -125,12 +107,7 @@ def cma_es(resources, config, solucao_inicial):
     sigma0 = float(config["cma_es_sigma"])
     logger = RunLogger(resources, config, population_size, [solucao_inicial])
 
-    initial_detail = evaluate_and_log_embeddings(
-        logger,
-        generation=0,
-        embeddings=[embedding_inicial[0]],
-        operator_records=build_initial_operator_records(1),
-    )[0]
+    initial_detail = evaluate_and_log_embeddings(logger, generation=0, embeddings=[embedding_inicial[0]], operator_records=build_initial_operator_records(1),)[0]
     best_detail = initial_detail
     last_generation_details = [initial_detail]
 
@@ -140,12 +117,7 @@ def cma_es(resources, config, solucao_inicial):
         strategy = pycma.CMAEvolutionStrategy(x0, sigma0, options)
         cma_population_size = int(strategy.popsize)
 
-        with tqdm(
-            total=max_cma_classifier_evals,
-            initial=min(logger.evaluation_counter, max_cma_classifier_evals),
-            desc="Executando CMA-ES",
-            unit="eval",
-        ) as progress:
+        with tqdm(total=max_cma_classifier_evals, initial=min(logger.evaluation_counter, max_cma_classifier_evals), desc="Running CMA-ES", unit="eval",) as progress:
             geracao = 1
             while (
                 logger.evaluation_counter < max_cma_classifier_evals
@@ -160,11 +132,7 @@ def cma_es(resources, config, solucao_inicial):
                     break
 
                 candidato_embeddings = [
-                    torch.tensor(
-                        np.asarray(vetor_candidato).reshape(shape),
-                        dtype=torch.float32,
-                        device=resources.device,
-                    )[0]
+                    torch.tensor(np.asarray(vetor_candidato).reshape(shape), dtype=torch.float32, device=resources.device,)[0]
                     for vetor_candidato in candidatos_avaliados
                 ]
                 operator_records = [
@@ -181,12 +149,7 @@ def cma_es(resources, config, solucao_inicial):
                     }
                     for _ in candidatos_avaliados
                 ]
-                candidate_details = evaluate_and_log_embeddings(
-                    logger,
-                    generation=geracao,
-                    embeddings=candidato_embeddings,
-                    operator_records=operator_records,
-                )
+                candidate_details = evaluate_and_log_embeddings(logger, generation=geracao, embeddings=candidato_embeddings, operator_records=operator_records,)
                 progress.update(len(candidate_details))
 
                 fitness_values = [
@@ -196,31 +159,16 @@ def cma_es(resources, config, solucao_inicial):
                 if len(candidatos_avaliados) == cma_population_size:
                     strategy.tell(candidatos_avaliados, fitness_values)
 
-                generation_best = max(
-                    candidate_details,
-                    key=lambda item: item["objective_value"],
-                )
+                generation_best = max(candidate_details, key=lambda item:item["objective_value"],)
                 if generation_best["objective_value"] > best_detail["objective_value"]:
                     best_detail = generation_best
 
                 cma_stop = dict(strategy.stop())
                 candidatos_info = [
-                    _candidate_info_from_detail(
-                        resources,
-                        candidate_detail,
-                        reference_detail,
-                        geracao,
-                        candidate_index,
-                        cma_sigma,
-                        cma_stop,
-                    )
+                    _candidate_info_from_detail(resources, candidate_detail, reference_detail, geracao, candidate_index, cma_sigma, cma_stop,)
                     for candidate_index, candidate_detail in enumerate(candidate_details)
                 ]
-                candidatos_ordenados = sorted(
-                    candidatos_info,
-                    key=lambda item: item["score_descendente"],
-                    reverse=True,
-                )
+                candidatos_ordenados = sorted(candidatos_info, key=lambda item:item["score_descendente"], reverse=True,)
                 top_5 = candidatos_ordenados[:5]
                 best_global = {
                     "descendente": best_detail["decoded_text"],

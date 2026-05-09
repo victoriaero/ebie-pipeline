@@ -95,33 +95,9 @@ def run_configs(repo_root, stage_name, run_timestamp, configs):
         if config["hill_climbing_restart"]:
             expected_total_evals += config["num_geracoes"]
 
-        manifest.append(
-            {
-                "run_timestamp": run_timestamp,
-                "stage_name": stage_name,
-                "experiment_name": experiment_name,
-                "config_path": str(config_path),
-                "output_file": config["output_file"],
-                "parameters": {
-                    "algorithm": "hill_climbing",
-                    "mutation_intensity_percent": config["mutation_intensity_percent"],
-                    "hill_climbing_neighbors": config["hill_climbing_neighbors"],
-                    "num_geracoes": config["num_geracoes"],
-                    "hill_climbing_restart": config["hill_climbing_restart"],
-                    "classifier_evaluation_budget": config["classifier_evaluation_budget"],
-                    "expected_neighbor_evaluations": (
-                        config["hill_climbing_neighbors"] * config["num_geracoes"]
-                    ),
-                    "expected_total_classifier_evaluations": expected_total_evals,
-                },
-            }
-        )
+        manifest.append({"run_timestamp":run_timestamp, "stage_name":stage_name, "experiment_name":experiment_name, "config_path":str(config_path), "output_file":config["output_file"], "parameters":{"algorithm":"hill_climbing", "mutation_intensity_percent":config["mutation_intensity_percent"], "hill_climbing_neighbors":config["hill_climbing_neighbors"], "num_geracoes":config["num_geracoes"], "hill_climbing_restart":config["hill_climbing_restart"], "classifier_evaluation_budget":config["classifier_evaluation_budget"], "expected_neighbor_evaluations":(config["hill_climbing_neighbors"] *config["num_geracoes"]), "expected_total_classifier_evaluations":expected_total_evals,},})
 
-        subprocess.run(
-            [sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)],
-            check=True,
-            cwd=repo_root,
-        )
+        subprocess.run([sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)], check=True, cwd=repo_root,)
 
     save_json(manifest_path, manifest)
     return outputs_dir
@@ -148,22 +124,7 @@ def rank_outputs(outputs_dir):
         data = json.loads(path.read_text(encoding="utf-8"))
         config = data["config"]
         summary = data["summary"]
-        rows.append(
-            {
-                "experiment_name": data["experiment_name"],
-                "file": str(path),
-                "mutation_intensity_percent": config["mutation_intensity_percent"],
-                "hill_climbing_neighbors": config["hill_climbing_neighbors"],
-                "hill_climbing_restart": config["hill_climbing_restart"],
-                "num_geracoes": config["num_geracoes"],
-                "success_rate": summary["success_rate"],
-                "evaluations_to_target_mean": summary["evaluations_to_target_mean"],
-                "best_fitness_mean": summary["best_fitness_mean"],
-                "best_fitness_std": summary["best_fitness_std"],
-                "seed_stability": summary["seed_stability"],
-                "num_runs": summary["num_runs"],
-            }
-        )
+        rows.append({"experiment_name":data["experiment_name"], "file":str(path), "mutation_intensity_percent":config["mutation_intensity_percent"], "hill_climbing_neighbors":config["hill_climbing_neighbors"], "hill_climbing_restart":config["hill_climbing_restart"], "num_geracoes":config["num_geracoes"], "success_rate":summary["success_rate"], "evaluations_to_target_mean":summary["evaluations_to_target_mean"], "best_fitness_mean":summary["best_fitness_mean"], "best_fitness_std":summary["best_fitness_std"], "seed_stability":summary["seed_stability"], "num_runs":summary["num_runs"],})
 
     return sorted(rows, key=build_sort_key)
 
@@ -174,34 +135,16 @@ def main():
     base_config = load_config(base_config_path)
     run_timestamp = build_run_timestamp()
 
-    stage1_outputs_dir = run_configs(
-        repo_root,
-        "hill_stage1",
-        run_timestamp,
-        generate_stage1_configs(base_config),
-    )
+    stage1_outputs_dir = run_configs(repo_root, "hill_stage1", run_timestamp, generate_stage1_configs(base_config),)
     stage1_ranking = rank_outputs(stage1_outputs_dir)
     best_stage1 = stage1_ranking[0]
     save_json(stage1_outputs_dir / "ranking_hill_stage1.json", stage1_ranking)
     save_json(stage1_outputs_dir / "best_hill_stage1.json", best_stage1)
 
-    stage2_outputs_dir = run_configs(
-        repo_root,
-        "hill_stage2",
-        run_timestamp,
-        generate_stage2_configs(base_config, best_stage1),
-    )
+    stage2_outputs_dir = run_configs(repo_root, "hill_stage2", run_timestamp, generate_stage2_configs(base_config, best_stage1),)
     stage2_ranking = rank_outputs(stage2_outputs_dir)
     save_json(stage2_outputs_dir / "ranking_hill_stage2.json", stage2_ranking)
-    save_json(
-        stage2_outputs_dir / "hill_two_stage_selection_summary.json",
-        {
-            "run_timestamp": run_timestamp,
-            "stage1_best": best_stage1,
-            "stage2_ranking": stage2_ranking,
-            "stage2_best": stage2_ranking[0] if stage2_ranking else None,
-        },
-    )
+    save_json(stage2_outputs_dir / "hill_two_stage_selection_summary.json", {"run_timestamp":run_timestamp, "stage1_best":best_stage1, "stage2_ranking":stage2_ranking, "stage2_best":stage2_ranking[0] if stage2_ranking else None,},)
 
 
 if __name__ == "__main__":

@@ -30,10 +30,7 @@ def load_config(config_path):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run or resume the EBIE stage 2 grid.")
-    parser.add_argument(
-        "--resume-run",
-        help="Existing stage 2 run timestamp to resume, for example 20260427_222451.",
-    )
+    parser.add_argument("--resume-run", help="Existing stage 2 run timestamp to resume, for example 20260427_222451.",)
     return parser.parse_args()
 
 
@@ -55,11 +52,7 @@ def build_experiment_name(index, config):
 
 
 def generate_stage2_configs(base_config):
-    combinations = itertools.product(
-        STAGE2_PROB_CROSSOVER,
-        STAGE2_PROB_ADD_TOKEN,
-        STAGE2_PROB_REMOVE_TOKEN,
-    )
+    combinations = itertools.product(STAGE2_PROB_CROSSOVER, STAGE2_PROB_ADD_TOKEN, STAGE2_PROB_REMOVE_TOKEN,)
 
     for index, (prob_crossover, prob_add, prob_remove) in enumerate(combinations, start=1):
         config = deepcopy(base_config)
@@ -167,25 +160,15 @@ def main():
                 ),
             },
         }
-        save_manifest(
-            manifest_path,
-            [manifest_by_experiment[key] for key in sorted(manifest_by_experiment)]
-        )
+        save_manifest(manifest_path,[manifest_by_experiment[key] for key in sorted(manifest_by_experiment)])
 
         experiment_status = detect_experiment_status(outputs_dir, experiment_name)
         if experiment_status["status"] == "completed":
             continue
 
-        subprocess.run(
-            [sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)],
-            check=True,
-            cwd=repo_root,
-        )
+        subprocess.run([sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)], check=True, cwd=repo_root,)
 
-    save_manifest(
-        manifest_path,
-        [manifest_by_experiment[key] for key in sorted(manifest_by_experiment)]
-    )
+    save_manifest(manifest_path,[manifest_by_experiment[key] for key in sorted(manifest_by_experiment)])
 
 
 if __name__ == "__main__":

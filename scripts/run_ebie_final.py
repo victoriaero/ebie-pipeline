@@ -27,22 +27,9 @@ def load_config(config_path):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run or resume the final EBIE experiment.")
-    parser.add_argument(
-        "--resume-run",
-        help="Existing final EBIE run timestamp to resume, for example 20260501_120000.",
-    )
-    parser.add_argument(
-        "--seed-start",
-        type=int,
-        default=FINAL_SEED_START,
-        help="First seed in the contiguous seed range.",
-    )
-    parser.add_argument(
-        "--num-runs",
-        type=int,
-        default=FINAL_NUM_RUNS,
-        help="Number of seeds/runs to execute.",
-    )
+    parser.add_argument("--resume-run", help="Existing final EBIE run timestamp to resume, for example 20260501_120000.",)
+    parser.add_argument("--seed-start", type=int, default=FINAL_SEED_START, help="First seed in the contiguous seed range.",)
+    parser.add_argument("--num-runs", type=int, default=FINAL_NUM_RUNS, help="Number of seeds/runs to execute.",)
     return parser.parse_args()
 
 
@@ -179,11 +166,7 @@ def main():
     if experiment_status["status"] == "completed":
         return
 
-    subprocess.run(
-        [sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)],
-        check=True,
-        cwd=repo_root,
-    )
+    subprocess.run([sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)], check=True, cwd=repo_root,)
 
     save_manifest(manifest_path, manifest)
 
