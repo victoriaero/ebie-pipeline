@@ -1,5 +1,5 @@
-from src.ga import (
-    GARunLogger,
+from src.metrics import (
+    RunLogger,
     build_initial_operator_records,
     evaluate_and_log_texts,
 )
@@ -24,7 +24,7 @@ def build_random_sampling_operator_records(count):
 
 def random_search(resources, config, frase_base):
     historico_geracoes = {}
-    logger = GARunLogger(resources, config, 1, [frase_base])
+    logger = RunLogger(resources, config, 1, [frase_base])
     avaliacoes_restantes = config["random_search_classifier_evals"]
 
     if avaliacoes_restantes <= 0:

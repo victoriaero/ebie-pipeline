@@ -7,11 +7,12 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import src.decoder as decoder
-from src.ga import (
-    GARunLogger,
+from src.metrics import (
+    RunLogger,
     build_initial_operator_records,
     evaluate_and_log_decoded_embeddings,
     evaluate_and_log_texts,
+    get_target_label_id,
 )
 from src.resources import tokenize_for_roberta
 
@@ -26,7 +27,7 @@ def _get_mutation_magnitude(config, token_embedding):
 
 def avaliar_sentimento(resources, config, frases):
     batch_size = config["speedup_factor"]
-    classifier_target_label = config.get("classifier_target_label", 0)
+    classifier_target_label = get_target_label_id(resources, config)
     dataset = DataLoader(frases, batch_size=batch_size, shuffle=False)
     resultados = []
 
@@ -163,7 +164,7 @@ def crossover(resources, config, frase1, frase2, return_details=False):
 
 def algoritmo_genetico(resources, config, populacao):
     historico_geracoes = {}
-    logger = GARunLogger(resources, config, len(populacao), populacao)
+    logger = RunLogger(resources, config, len(populacao), populacao)
     populacao_details = evaluate_and_log_texts(
         logger,
         generation=0,

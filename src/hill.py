@@ -1,8 +1,8 @@
 from tqdm import tqdm
 
 from src.ebie import gerar_variacao
-from src.ga import (
-    GARunLogger,
+from src.metrics import (
+    RunLogger,
     build_initial_operator_records,
     evaluate_and_log_decoded_embeddings,
     evaluate_and_log_texts,
@@ -12,7 +12,7 @@ from src.initialization import generate_initial_population
 
 def hill_climbing(resources, config, solucao_inicial):
     historico_geracoes = {}
-    logger = GARunLogger(resources, config, 1, [solucao_inicial])
+    logger = RunLogger(resources, config, 1, [solucao_inicial])
     solucao_details = evaluate_and_log_texts(
         logger,
         generation=0,
@@ -175,8 +175,6 @@ def hill_climbing(resources, config, solucao_inicial):
             )[:5]
             historico_geracoes[f"geracao_{geracao}"]["evaluations_cumulative"] = logger.evaluation_counter
 
-            # Random restart jumps to a fresh point even if it is worse, so the search
-            # can leave a plateau and continue exploring a new region.
             solucao_atual = restart_detail["decoded_text"]
             score_atual = restart_detail["objective_value"]
             evaluation_index_atual = restart_detail["evaluation_id"]

@@ -4,6 +4,10 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, RobertaForMaskedLM, RobertaTokenizer
 
 
+DEFAULT_CLASSIFIER_MODEL_NAME = "j-hartmann/emotion-english-distilroberta-base"
+DEFAULT_CLASSIFIER_TARGET_CLASS = "joy"
+
+
 @dataclass
 class ModelResources:
     device: torch.device
@@ -23,6 +27,20 @@ def tokenize_for_roberta(resources, text):
     ).to(resources.device)
 
 
+def _resolve_label_id(classifier_model, target_class):
+    id2label = getattr(classifier_model.config, "id2label", {}) or {}
+    normalized_target = str(target_class).strip().lower()
+    for label_id, label_name in id2label.items():
+        if str(label_name).strip().lower() == normalized_target:
+            return int(label_id)
+
+    available_labels = ", ".join(str(label) for label in id2label.values())
+    raise ValueError(
+        f"Target classifier class '{target_class}' was not found in classifier labels: "
+        f"{available_labels}"
+    )
+
+
 def load_resources(config):
     if config["use_gpu_if_available"] and torch.cuda.is_available():
         device = torch.device("cuda")
@@ -34,13 +52,20 @@ def load_resources(config):
     model.eval()
     model_max_length = min(tokenizer.model_max_length, model.config.max_position_embeddings)
 
-    classifier_model_name = config.get("classifier_model_name", config.get("emotion_model_name"))
+    classifier_model_name = config.get("classifier_model_name") or DEFAULT_CLASSIFIER_MODEL_NAME
+    config["classifier_model_name"] = classifier_model_name
+    config["emotion_model_name"] = classifier_model_name
+    config.setdefault("classifier_target_class", DEFAULT_CLASSIFIER_TARGET_CLASS)
 
     classifier_tokenizer = AutoTokenizer.from_pretrained(classifier_model_name)
     classifier_model = AutoModelForSequenceClassification.from_pretrained(
         classifier_model_name
     ).to(device)
     classifier_model.eval()
+    config["classifier_target_label"] = _resolve_label_id(
+        classifier_model,
+        config["classifier_target_class"],
+    )
 
     return ModelResources(
         device=device,

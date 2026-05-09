@@ -1,6 +1,6 @@
 initialization_mode: random_1_token
 llm_initialization_model: meta-llama/Llama-3.1-8B-Instruct
-llm_initialization_target_class: positive sentiment
+llm_initialization_target_class: joy
 llm_initialization_num_words: 3
 llm_initialization_max_new_tokens: 32
 
@@ -61,7 +61,10 @@ ga_mutation_prob: 0.2
 ga_embedding_mutation_std: 0.1
 
 roberta_model_name: roberta-large
-emotion_model_name: distilbert/distilbert-base-uncased-finetuned-sst-2-english
+classifier_model_name: j-hartmann/emotion-english-distilroberta-base
+emotion_model_name: j-hartmann/emotion-english-distilroberta-base
+classifier_target_class: joy
+classifier_target_label: 3
 sample_sentence: "This is a sample sentence for computing embedding statistics."
 
 output_file: historico_completo.json
