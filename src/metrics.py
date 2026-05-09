@@ -235,17 +235,34 @@ def _build_run_dir(config, experiment_id, method, seed, timestamp_start):
 
 
 def _method_hyperparameters(config, population_size):
+    method = config.get("_algorithm_name")
     rcga_crossover_prob = config.get("rcga_crossover_prob", config.get("prob_crossover_embedding", 0.0))
     rcga_mutation_prob = config.get("rcga_mutation_prob", config.get("prob_mutacao_embedding", 0.0))
     rcga_embedding_mutation_std = config.get("rcga_embedding_mutation_std", config.get("mutation_intensity_percent", 0.1),)
+    crossover_probability = config.get("prob_crossover_embedding", 0.0)
+    mutation_probability = config.get("prob_mutacao_embedding", 0.0)
+    mutation_intensity = config.get("mutation_intensity_percent", 0.1)
+    add_token_probability = config.get("prob_add_random_token", 0.0)
+    remove_token_probability = config.get("prob_remover_token", 0.0)
+
+    if method == "rcga":
+        crossover_probability = rcga_crossover_prob
+        mutation_probability = rcga_mutation_prob
+        mutation_intensity = rcga_embedding_mutation_std
+        add_token_probability = 0.0
+        remove_token_probability = 0.0
+    elif method not in {"genetic", "hill_climbing"}:
+        add_token_probability = 0.0
+        remove_token_probability = 0.0
+
     return {
         "population_size": population_size,
         "num_generations": config["num_geracoes"],
-        "crossover_probability": rcga_crossover_prob,
-        "mutation_probability": rcga_mutation_prob,
-        "mutation_intensity": rcga_embedding_mutation_std,
-        "add_token_probability": 0.0,
-        "remove_token_probability": 0.0,
+        "crossover_probability": crossover_probability,
+        "mutation_probability": mutation_probability,
+        "mutation_intensity": mutation_intensity,
+        "add_token_probability": add_token_probability,
+        "remove_token_probability": remove_token_probability,
         "tournament_size": config.get("tournament_size", 2),
         "elitism_size": 0,
         "max_num_tokens": config.get("max_num_tokens"),

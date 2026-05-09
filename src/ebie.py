@@ -5,89 +5,120 @@ import torch
 from tqdm import tqdm
 
 import src.decoder as decoder
-from src.metrics import (RunLogger, build_initial_operator_records, evaluate_and_log_decoded_embeddings, evaluate_and_log_texts,)
-from src.resources import tokenize_for_roberta
+from src.metrics import (RunLogger, build_initial_operator_records, evaluate_and_log_decoded_embeddings,)
 
 
-def _get_mutation_magnitude(config, token_embedding):
-    if "mutation_intensity_percent" in config:
-        rms_magnitude = token_embedding.pow(2).mean().sqrt().item()
-        return max(rms_magnitude * config["mutation_intensity_percent"], 1.0e-8)
-
-    return config["perturbacao_magnitude"]
-
-
-def mutacao_embeddings(resources, config, embeddings):
-    for i in range(embeddings.shape[1]):
-        if random.random() < config["prob_mutacao_embedding"]:
-            perturbacao_magnitude = _get_mutation_magnitude(config, embeddings[0, i])
-            perturbacao = torch.randn(embeddings[0, i].shape).to(resources.device)
-            perturbacao *= (
-                torch.rand(embeddings[0, i].shape).to(resources.device)
-                * 2
-                * perturbacao_magnitude
-                - perturbacao_magnitude
-            )
-            embeddings[0, i] += perturbacao
-    return embeddings
+def _tokenize_for_operator(resources, text):
+    return resources.tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=resources.model_max_length,
+        return_special_tokens_mask=True,
+    ).to(resources.device)
 
 
-def remover_token(embeddings):
-    if embeddings.shape[1] > 1:
-        idx = random.randint(0, embeddings.shape[1] - 1)
-        embeddings = torch.cat([embeddings[:, :idx, :], embeddings[:, idx + 1 :, :]], dim=1)
-    return embeddings
+def _content_token_indices(inputs, sequence_length):
+    special_mask = inputs.get("special_tokens_mask")
+    if special_mask is None:
+        return list(range(sequence_length))
+
+    indices = [
+        index
+        for index, is_special in enumerate(special_mask[0].tolist())
+        if not is_special and index < sequence_length
+    ]
+    return indices or list(range(sequence_length))
 
 
-def gerar_variacao(resources, config, frase, return_embedding=False):
-    inputs = tokenize_for_roberta(resources, frase)
+def _sentence_embeddings(resources, text):
+    inputs = _tokenize_for_operator(resources, text)
     with torch.no_grad():
-        outputs = resources.model.roberta(**inputs)
-        embeddings = outputs.last_hidden_state
+        outputs = resources.model.roberta(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs.get("attention_mask"),
+        )
+    content_indices = _content_token_indices(inputs, outputs.last_hidden_state.shape[1])
+    content_embeddings = outputs.last_hidden_state[:, content_indices, :]
+    return content_embeddings, list(range(content_embeddings.shape[1]))
 
-    if random.random() < config["prob_mutacao_embedding"]:
-        novos_embeddings = mutacao_embeddings(resources, config, embeddings.clone())
-    else:
-        novos_embeddings = embeddings.clone()
+
+def mutacao_embeddings(resources, config, embeddings, candidate_indices=None):
+    if random.random() >= config["prob_mutacao_embedding"]:
+        return embeddings, False
+
+    candidate_indices = candidate_indices or list(range(embeddings.shape[1]))
+    idx = random.choice(candidate_indices)
+    mutation_factor = config.get("mutation_intensity_percent", 0.1)
+    directions = torch.where(
+        torch.rand_like(embeddings[0, idx]) < 0.5,
+        1.0 - mutation_factor,
+        1.0 + mutation_factor,
+    )
+    embeddings[0, idx] *= directions
+    return embeddings, True
+
+
+def remover_token(embeddings, candidate_indices=None):
+    candidate_indices = [
+        index for index in (candidate_indices or list(range(embeddings.shape[1])))
+        if index < embeddings.shape[1]
+    ]
+    if len(candidate_indices) <= 1:
+        return embeddings, False
+
+    idx = random.choice(candidate_indices)
+    embeddings = torch.cat([embeddings[:, :idx, :], embeddings[:, idx + 1 :, :]], dim=1)
+    return embeddings, True
+
+
+def gerar_variacao(resources, config, frase=None, return_embedding=False, embeddings=None, content_indices=None, return_details=False):
+    if embeddings is None:
+        embeddings, content_indices = _sentence_embeddings(resources, frase)
+    elif content_indices is None:
+        content_indices = list(range(embeddings.shape[1]))
+
+    novos_embeddings, mutation_applied = mutacao_embeddings(resources, config, embeddings.clone(), content_indices)
+    num_tokens_added = 0
+    num_tokens_removed = 0
 
     if random.random() < config["prob_add_random_token"]:
         random_embedding = torch.empty(novos_embeddings.shape[-1]).uniform_(-1, 1).to(resources.device)
         random_embedding = random_embedding.unsqueeze(0).unsqueeze(0)
         novos_embeddings = torch.cat([novos_embeddings, random_embedding], dim=1)
-    elif random.random() < config["prob_remover_token"]:
-        novos_embeddings = remover_token(novos_embeddings)
-    else:
-        idx = random.randint(0, novos_embeddings.shape[1] - 1)
-        base_perturbacao_magnitude = _get_mutation_magnitude(config, novos_embeddings[0, idx])
-        descendente_perturbacao_magnitude = random.uniform(0.5 *base_perturbacao_magnitude, 1.5 *base_perturbacao_magnitude,)
-        perturbacao = torch.randn(novos_embeddings[0, idx].shape).to(resources.device)
-        perturbacao *= (
-            torch.rand(novos_embeddings[0, idx].shape).to(resources.device)
-            * 2
-            * descendente_perturbacao_magnitude
-            - descendente_perturbacao_magnitude
-        )
-        novos_embeddings[0, idx] += perturbacao
+        content_indices = [*content_indices, novos_embeddings.shape[1] - 1]
+        num_tokens_added = 1
+
+    if random.random() < config["prob_remover_token"]:
+        novos_embeddings, removed = remover_token(novos_embeddings, content_indices)
+        num_tokens_removed = int(removed)
 
     nova_frase = decoder.decode_embeddings_to_text(resources, config, novos_embeddings)
+    details = {
+        "descendente": nova_frase,
+        "embedding": novos_embeddings[0],
+        "mutation_applied": mutation_applied,
+        "num_tokens_added": num_tokens_added,
+        "num_tokens_removed": num_tokens_removed,
+    }
+    if return_details:
+        return details
     if return_embedding:
         return nova_frase, novos_embeddings[0]
     return nova_frase
 
 
-def crossover_embeddings(config, pai1_embedding, pai2_embedding):
-    min_len = min(pai1_embedding.shape[1], pai2_embedding.shape[1])
-    pai1_embedding = pai1_embedding[:, :min_len]
-    pai2_embedding = pai2_embedding[:, :min_len]
-
+def crossover_embeddings(config, pai1_embedding, pai2_embedding, pai1_indices=None, pai2_indices=None):
     descendente_embedding = pai1_embedding.clone()
+    pai1_indices = pai1_indices or list(range(pai1_embedding.shape[1]))
+    pai2_indices = pai2_indices or list(range(pai2_embedding.shape[1]))
+    token_idx_pai1 = random.choice(pai1_indices)
+    token_idx_pai2 = random.choice(pai2_indices)
     num_dimensoes = pai1_embedding.shape[2]
-    max_dimensoes_trocadas = int(num_dimensoes * config["max_percent_dimensions_crossover"])
-    num_trocas = random.randint(0, max_dimensoes_trocadas)
-    indices_troca = random.sample(range(num_dimensoes), num_trocas)
+    swap_probability = config["max_percent_dimensions_crossover"]
+    mascara_troca = torch.rand(num_dimensoes, device=pai1_embedding.device) < swap_probability
 
-    for i in indices_troca:
-        descendente_embedding[:, :, i] = pai2_embedding[:, :, i]
+    descendente_embedding[0, token_idx_pai1, mascara_troca] = pai2_embedding[0, token_idx_pai2, mascara_troca]
 
     return descendente_embedding
 
@@ -99,38 +130,30 @@ def torneio(populacao, fitness, tamanho=2):
 
 
 def crossover(resources, config, frase1, frase2, return_details=False):
-    if random.random() < config["prob_crossover_embedding"]:
-        inputs1 = tokenize_for_roberta(resources, frase1)
-        inputs2 = tokenize_for_roberta(resources, frase2)
-        with torch.no_grad():
-            outputs1 = resources.model.roberta(**inputs1)
-            outputs2 = resources.model.roberta(**inputs2)
+    embeddings1, indices1 = _sentence_embeddings(resources, frase1)
+    embeddings2, indices2 = _sentence_embeddings(resources, frase2)
 
-        embeddings1 = outputs1.last_hidden_state
-        embeddings2 = outputs2.last_hidden_state
-        descendente_embedding = crossover_embeddings(config, embeddings1, embeddings2)
+    if random.random() < config["prob_crossover_embedding"]:
+        descendente_embedding = crossover_embeddings(config, embeddings1, embeddings2, indices1, indices2)
         descendente = decoder.decode_embeddings_to_text(resources, config, descendente_embedding)
         if return_details:
-            return descendente, True
+            return descendente, descendente_embedding, indices1, True
         return descendente
 
-    palavras1 = frase1.split()
-    palavras2 = frase2.split()
-    if len(palavras1) > 1 and len(palavras2) > 1:
-        ponto = random.randint(1, min(len(palavras1), len(palavras2)) - 1)
-        nova_frase = palavras1[:ponto] + palavras2[ponto:]
-    else:
-        nova_frase = palavras1 if random.random() < 0.5 else palavras2
-    descendente = " ".join(nova_frase)
+    descendente = decoder.decode_embeddings_to_text(resources, config, embeddings1)
     if return_details:
-        return descendente, False
+        return descendente, embeddings1, indices1, False
     return descendente
 
 
 def algoritmo_genetico(resources, config, populacao):
     historico_geracoes = {}
     logger = RunLogger(resources, config, len(populacao), populacao)
-    populacao_details = evaluate_and_log_texts(logger, generation=0, texts=copy.deepcopy(populacao), operator_records=build_initial_operator_records(len(populacao)),)
+    initial_embeddings = [
+        _sentence_embeddings(resources, text)[0][0]
+        for text in populacao
+    ]
+    populacao_details = evaluate_and_log_decoded_embeddings(logger, generation=0, texts=copy.deepcopy(populacao), embeddings=initial_embeddings, operator_records=build_initial_operator_records(len(populacao)),)
     fitness = [candidate["objective_value"] for candidate in populacao_details]
 
     for geracao in tqdm(range(config["num_geracoes"]), desc="Evolving"):
@@ -146,10 +169,20 @@ def algoritmo_genetico(resources, config, populacao):
             pai2_detail = populacao_details[pai2_idx]
             logger.mark_selected_parent(pai1_detail["candidate_id"])
             logger.mark_selected_parent(pai2_detail["candidate_id"])
-            descendente, crossover_aplicado = crossover(resources, config, pai1, pai2, return_details=True,)
-            nova_frase, nova_embedding = gerar_variacao(resources, config, descendente, return_embedding=True,)
+            _, descendente_embedding, content_indices, crossover_aplicado = crossover(resources, config, pai1, pai2, return_details=True,)
+            variation = gerar_variacao(resources, config, embeddings=descendente_embedding, content_indices=content_indices, return_details=True,)
+            nova_frase = variation["descendente"]
+            nova_embedding = variation["embedding"]
+            mutation_labels = []
+            if variation["mutation_applied"]:
+                mutation_labels.append("embedding_scale_10_percent")
+            if variation["num_tokens_added"]:
+                mutation_labels.append("add_random_token")
+            if variation["num_tokens_removed"]:
+                mutation_labels.append("remove_token")
+            any_variation = bool(mutation_labels)
 
-            parent_records.append({"pai1_idx":pai1_idx, "pai2_idx":pai2_idx, "parent_ids":[pai1_detail["candidate_id"], pai2_detail["candidate_id"]], "parent1_id":pai1_detail["candidate_id"], "parent2_id":pai2_detail["candidate_id"], "operator_used":"variation", "mutation_type":"ebie_embedding_variation", "crossover_type":("ebie_dimension_crossover" if crossover_aplicado else "textual_fallback"), "mutation_applied":True, "crossover_applied":crossover_aplicado,})
+            parent_records.append({"pai1_idx":pai1_idx, "pai2_idx":pai2_idx, "parent_ids":[pai1_detail["candidate_id"], pai2_detail["candidate_id"]], "parent1_id":pai1_detail["candidate_id"], "parent2_id":pai2_detail["candidate_id"], "operator_used":"variation", "mutation_type":"+".join(mutation_labels) if mutation_labels else None, "crossover_type":("ebie_single_token_dimension_crossover" if crossover_aplicado else None), "mutation_applied":any_variation, "crossover_applied":crossover_aplicado, "num_tokens_added":variation["num_tokens_added"], "num_tokens_removed":variation["num_tokens_removed"],})
             nova_populacao.append(nova_frase)
             parent_records[-1]["embedding"] = nova_embedding
 

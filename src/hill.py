@@ -33,24 +33,19 @@ def hill_climbing(resources, config, solucao_inicial):
         max_neighbors = min(config["hill_climbing_neighbors"], remaining_evaluations)
 
         for _ in range(max_neighbors):
-            variation_result = gerar_variacao(resources, config, solucao_atual, return_embedding=True,)
-            nova_frase = (
-                variation_result["descendente"]
-                if isinstance(variation_result, dict)
-                else variation_result[0]
-                if isinstance(variation_result, tuple)
-                else variation_result
-            )
-            nova_embedding = (
-                variation_result.get("embedding")
-                if isinstance(variation_result, dict)
-                else variation_result[1]
-                if isinstance(variation_result, tuple) and len(variation_result) > 1
-                else None
-            )
+            variation_result = gerar_variacao(resources, config, solucao_atual, return_details=True,)
+            nova_frase = variation_result["descendente"]
+            nova_embedding = variation_result["embedding"]
+            mutation_labels = []
+            if variation_result["mutation_applied"]:
+                mutation_labels.append("embedding_scale_10_percent")
+            if variation_result["num_tokens_added"]:
+                mutation_labels.append("add_random_token")
+            if variation_result["num_tokens_removed"]:
+                mutation_labels.append("remove_token")
             vizinhos_textos.append(nova_frase)
             vizinhos_embeddings.append(nova_embedding)
-            parent_records.append({"parent_ids":[candidate_id_atual], "parent1_id":candidate_id_atual, "parent2_id":None, "operator_used":"mutation", "mutation_type":"ebie_embedding_variation", "crossover_type":None, "mutation_applied":True, "crossover_applied":False,})
+            parent_records.append({"parent_ids":[candidate_id_atual], "parent1_id":candidate_id_atual, "parent2_id":None, "operator_used":"variation", "mutation_type":"+".join(mutation_labels) if mutation_labels else None, "crossover_type":None, "mutation_applied":bool(mutation_labels), "crossover_applied":False, "num_tokens_added":variation_result["num_tokens_added"], "num_tokens_removed":variation_result["num_tokens_removed"],})
 
         vizinhos_details = evaluate_and_log_decoded_embeddings(logger, generation=geracao, texts=vizinhos_textos, embeddings=vizinhos_embeddings, operator_records=parent_records,)
         progress_bar.update(len(vizinhos_details))

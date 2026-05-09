@@ -1,48 +1,21 @@
 import random
-import re
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.decoder import decode_com_top_k
-from src.resources import tokenize_for_roberta
-
 
 _LLM_CACHE = {}
-_EMBEDDING_STATS_CACHE = {}
-
-
-def _get_embedding_stats(resources, config):
-    cache_key = (resources.device.type, config["sample_sentence"])
-    if cache_key in _EMBEDDING_STATS_CACHE:
-        return _EMBEDDING_STATS_CACHE[cache_key]
-
-    with torch.no_grad():
-        inputs = tokenize_for_roberta(resources, config["sample_sentence"])
-        outputs = resources.model.roberta(**inputs)
-        mean_embedding = outputs.last_hidden_state.mean(dim=1).mean(dim=0)
-        std_embedding = outputs.last_hidden_state.std(dim=1).mean(dim=0)
-
-    _EMBEDDING_STATS_CACHE[cache_key] = (mean_embedding, std_embedding)
-    return _EMBEDDING_STATS_CACHE[cache_key]
 
 
 def _generate_random_token(resources, config):
-    mean_embedding, std_embedding = _get_embedding_stats(resources, config)
+    del config
 
     while True:
-        random_embedding = (
-            torch.normal(mean=mean_embedding, std=std_embedding)
-            .unsqueeze(0)
-            .unsqueeze(0)
-            .to(resources.device)
-        )
-        with torch.no_grad():
-            logits = resources.model.lm_head(random_embedding)
-            predicted_token = decode_com_top_k(logits, top_k=config["top_k"])
-
-        token = resources.tokenizer.decode([predicted_token[0]], skip_special_tokens=True).strip()
-        if token and re.match(r"^[a-zA-Z0-9]+$", token):
+        token_id = random.randrange(resources.tokenizer.vocab_size)
+        if token_id in resources.tokenizer.all_special_ids:
+            continue
+        token = resources.tokenizer.decode([token_id], skip_special_tokens=True).strip()
+        if token:
             return token
 
 

@@ -58,7 +58,8 @@ roberta_model_name: roberta-large
 classifier_model_name: j-hartmann/emotion-english-distilroberta-base
 classifier_target_class: joy
 
-# Used to estimate embedding statistics for random initialization.
+# Legacy field kept for compatibility with old configs. The current
+# random_1_token initialization samples token IDs directly from RoBERTa.
 sample_sentence: "This is a sample sentence for computing embedding statistics."
 
 # Removed because they are redundant:
@@ -71,8 +72,8 @@ sample_sentence: "This is a sample sentence for computing embedding statistics."
 # =============================================================================
 initialization_mode: random_1_token
 
-# Used when initialization_mode is random_1_token or random_3_tokens.
-# Controls the LM-head top-k used to generate initial tokens.
+# Legacy field kept for old experiment manifests. Random token initialization
+# now samples directly from the RoBERTa vocabulary, as described in the paper.
 top_k: 100
 
 # Used only when initialization_mode is llm_tokens.
@@ -150,11 +151,13 @@ speedup_factor: 50
 prob_mutacao_embedding: 0.2
 prob_crossover_embedding: 0.8
 
-# Preferred over perturbacao_magnitude: scales the perturbation by the embedding RMS.
+# EBIE mutation scales each dimension of one selected token embedding by
+# either 1 - mutation_intensity_percent or 1 + mutation_intensity_percent.
 # Example: 0.1 = 10%.
 mutation_intensity_percent: 0.1
 
-# Legacy fallback used only when mutation_intensity_percent is absent.
+# Legacy field kept for compatibility with old configs. EBIE no longer uses
+# additive noise with this magnitude.
 perturbacao_magnitude: 64
 
 tournament_size: 2
@@ -172,6 +175,7 @@ tournament_size: 2
 
 prob_add_random_token: 0.3
 prob_remover_token: 0.3
+# Per-dimension swap probability for the single selected token embedding.
 max_percent_dimensions_crossover: 0.02
 
 
