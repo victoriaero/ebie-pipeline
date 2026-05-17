@@ -176,7 +176,7 @@ tournament_size: 2
 prob_add_random_token: 0.3
 prob_remover_token: 0.3
 # Per-dimension swap probability for the single selected token embedding.
-max_percent_dimensions_crossover: 0.02
+crossover_dimension_swap_probability: 0.02
 
 
 # =============================================================================
@@ -233,6 +233,11 @@ cma_es_sigma: 0.5
 random_search_classifier_evals: 100
 random_search_batch_size: 50
 
-# Informational in scripts/manifests; not read by the random_search core.
+# Gaussian noise scale for random embedding sampling. Defaults to
+# mutation_intensity_percent when omitted.
 # Example:
-# random_search_sampling_mode: independent_initialization_samples
+# random_search_sigma: 0.1
+#
+# Informational in scripts/manifests.
+# Example:
+# random_search_sampling_mode: gaussian_embedding_sampling_from_initial_population

@@ -27,6 +27,7 @@ INDIVIDUAL_LOG_FIELDS = [
     "classifier_query_id",
     "candidate_id",
     "decoded_text",
+    "text_source",
     "normalized_text",
     "text_hash",
     "tokens",
@@ -56,6 +57,8 @@ INDIVIDUAL_LOG_FIELDS = [
     "crossover_type",
     "mutation_applied",
     "crossover_applied",
+    "add_token_applied",
+    "remove_token_applied",
     "num_tokens_added",
     "num_tokens_removed",
     "num_tokens_changed",
@@ -99,6 +102,8 @@ GENERATION_SUMMARY_FIELDS = [
     "mean_num_tokens_generation",
     "num_mutations",
     "num_crossovers",
+    "num_token_additions",
+    "num_token_removals",
     "num_elites",
 ]
 
@@ -251,7 +256,21 @@ def _method_hyperparameters(config, population_size):
         mutation_intensity = rcga_embedding_mutation_std
         add_token_probability = 0.0
         remove_token_probability = 0.0
-    elif method not in {"genetic", "hill_climbing"}:
+    elif method == "hill_climbing":
+        mutation_intensity = config.get(
+            "hill_climbing_sigma",
+            config.get("hill_climbing_step_size", mutation_intensity),
+        )
+        add_token_probability = 0.0
+        remove_token_probability = 0.0
+    elif method == "random_search":
+        mutation_intensity = config.get(
+            "random_search_sigma",
+            config.get("random_search_embedding_std", mutation_intensity),
+        )
+        add_token_probability = 0.0
+        remove_token_probability = 0.0
+    elif method != "genetic":
         add_token_probability = 0.0
         remove_token_probability = 0.0
 
@@ -261,6 +280,7 @@ def _method_hyperparameters(config, population_size):
         "crossover_probability": crossover_probability,
         "mutation_probability": mutation_probability,
         "mutation_intensity": mutation_intensity,
+        "crossover_dimension_swap_probability": config.get("crossover_dimension_swap_probability"),
         "add_token_probability": add_token_probability,
         "remove_token_probability": remove_token_probability,
         "tournament_size": config.get("tournament_size", 2),
@@ -276,6 +296,10 @@ def _method_hyperparameters(config, population_size):
         "classifier_evaluation_budget": config.get("classifier_evaluation_budget"),
         "classifier_evaluation_budget_kind": config.get("classifier_evaluation_budget_kind"),
         "hill_climbing_neighbors": config.get("hill_climbing_neighbors"),
+        "hill_climbing_sigma": config.get(
+            "hill_climbing_sigma",
+            config.get("hill_climbing_step_size", config.get("mutation_intensity_percent")),
+        ),
         "hill_climbing_restart": config.get("hill_climbing_restart"),
         "max_evaluations": config.get("max_evaluations"),
         "cma_es_population_size": config.get("cma_es_population_size"),
@@ -284,6 +308,10 @@ def _method_hyperparameters(config, population_size):
         "cma_es_cov_eps": config.get("cma_es_cov_eps"),
         "random_search_classifier_evals": config.get("random_search_classifier_evals"),
         "random_search_batch_size": config.get("random_search_batch_size"),
+        "random_search_sigma": config.get(
+            "random_search_sigma",
+            config.get("random_search_embedding_std", config.get("mutation_intensity_percent")),
+        ),
     }
 
 
@@ -605,6 +633,10 @@ def _build_operator_used(record):
         operators.append("crossover")
     if record.get("mutation_applied"):
         operators.append("mutation")
+    if record.get("add_token_applied") or record.get("num_tokens_added", 0):
+        operators.append("add_token")
+    if record.get("remove_token_applied") or record.get("num_tokens_removed", 0):
+        operators.append("remove_token")
     if not operators:
         return "copy"
     return "+".join(operators)
@@ -615,13 +647,7 @@ def evaluate_and_log_embeddings(logger, generation, embeddings, operator_records
     return _log_candidate_records(logger, generation, embeddings, decoded_records, operator_records)
 
 
-def evaluate_and_log_texts(
-    logger,
-    generation,
-    texts,
-    operator_records,
-    embedding_source="sentence_embedding",
-):
+def evaluate_and_log_texts(logger, generation, texts, operator_records, embedding_source="sentence_embedding", text_source="direct_text"):
     embeddings = population_to_embeddings(logger.resources, texts)
     decoded_records = [
         {
@@ -635,18 +661,12 @@ def evaluate_and_log_texts(
     for record in operator_records:
         normalized_record = dict(record)
         normalized_record.setdefault("embedding_source", embedding_source)
+        normalized_record.setdefault("text_source", text_source)
         normalized_records.append(normalized_record)
     return _log_candidate_records(logger, generation, embeddings, decoded_records, normalized_records,)
 
 
-def evaluate_and_log_decoded_embeddings(
-    logger,
-    generation,
-    texts,
-    embeddings,
-    operator_records,
-    embedding_source="decoder_embedding",
-):
+def evaluate_and_log_texts_with_embeddings(logger, generation, texts, embeddings, operator_records, embedding_source="provided_embedding", text_source="provided_text"):
     decoded_records = [
         {
             "decoded_text": text,
@@ -659,8 +679,21 @@ def evaluate_and_log_decoded_embeddings(
     for record in operator_records:
         normalized_record = dict(record)
         normalized_record.setdefault("embedding_source", embedding_source)
+        normalized_record.setdefault("text_source", text_source)
         normalized_records.append(normalized_record)
     return _log_candidate_records(logger, generation, embeddings, decoded_records, normalized_records,)
+
+
+def evaluate_and_log_decoded_embeddings(logger, generation, texts, embeddings, operator_records, embedding_source="decoder_embedding"):
+    return evaluate_and_log_texts_with_embeddings(
+        logger,
+        generation,
+        texts,
+        embeddings,
+        operator_records,
+        embedding_source=embedding_source,
+        text_source="post_operator_decoding",
+    )
 
 
 def build_initial_operator_records(count):
@@ -674,6 +707,8 @@ def build_initial_operator_records(count):
             "crossover_type": None,
             "mutation_applied": False,
             "crossover_applied": False,
+            "add_token_applied": False,
+            "remove_token_applied": False,
         }
         for _ in range(count)
     ]
@@ -729,6 +764,7 @@ def _log_candidate_records(logger, generation, embeddings, decoded_records, oper
             "classifier_query_id": classifier_query_id,
             "candidate_id": candidate_id,
             "decoded_text": decoded_text,
+            "text_source": operator_record.get("text_source"),
             "normalized_text": normalized_text,
             "text_hash": _hash_text(normalized_text),
             "tokens": tokens,
@@ -751,6 +787,8 @@ def _log_candidate_records(logger, generation, embeddings, decoded_records, oper
             "crossover_type": operator_record.get("crossover_type"),
             "mutation_applied": operator_record.get("mutation_applied", False),
             "crossover_applied": operator_record.get("crossover_applied", False),
+            "add_token_applied": operator_record.get("add_token_applied", operator_record.get("num_tokens_added", 0) > 0),
+            "remove_token_applied": operator_record.get("remove_token_applied", operator_record.get("num_tokens_removed", 0) > 0),
             "num_tokens_added": operator_record.get("num_tokens_added", 0),
             "num_tokens_removed": operator_record.get("num_tokens_removed", 0),
             "num_tokens_changed": operator_record.get("num_tokens_changed", 0),
@@ -820,6 +858,8 @@ def _build_generation_summary(logger, generation, candidate_details):
         "mean_num_tokens_generation": float(np.mean(num_tokens)) if num_tokens else None,
         "num_mutations": sum(row["mutation_applied"] for row in rows),
         "num_crossovers": sum(row["crossover_applied"] for row in rows),
+        "num_token_additions": sum(row["add_token_applied"] for row in rows),
+        "num_token_removals": sum(row["remove_token_applied"] for row in rows),
         "num_elites": 0,
     }
 

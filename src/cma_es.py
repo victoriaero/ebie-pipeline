@@ -1,44 +1,24 @@
-from importlib.metadata import packages_distributions
-
+import cma
 import numpy as np
 import torch
 from tqdm import tqdm
 
-from src.experiment_utils import set_global_seed
-from src.metrics import (RunLogger, build_initial_operator_records, evaluate_and_log_embeddings,)
-from src.resources import tokenize_for_roberta
+from src.ebie import _sentence_embeddings
+from src.metrics import (
+    RunLogger,
+    build_initial_operator_records,
+    evaluate_and_log_embeddings,
+    evaluate_and_log_texts_with_embeddings,
+)
 
 
-def frase_para_embedding(resources, frase):
-    inputs = tokenize_for_roberta(resources, frase)
-    with torch.no_grad():
-        outputs = resources.model.roberta(**inputs)
-        embeddings = outputs.last_hidden_state
-    return embeddings
-
-
-def _set_cma_seed(config):
+def _resolve_cma_seed(config):
     seed = config.get("cma_es_seed")
     if seed is None:
         seed = config.get("_current_seed", config.get("random_seed"))
     if seed is None:
-        seed = int(np.random.randint(0, 2**31 - 1))
-
-    set_global_seed(seed)
-    return seed
-
-
-def _load_pycma():
-    distributions = packages_distributions().get("cma", [])
-    if "cma" not in distributions:
-        installed = ", ".join(distributions) if distributions else "nenhuma"
-        raise ImportError("The correct CMA-ES package is not available. " f"The current 'cma' module comes from: {installed}. " "Install pycma with `pip uninstall cma-es` and `pip install cma`.")
-
-    import cma
-
-    if not hasattr(cma, "CMAEvolutionStrategy"):
-        raise ImportError("The imported 'cma' module does not expose CMAEvolutionStrategy. " "Install pycma with `pip uninstall cma-es` and `pip install cma`.")
-    return cma
+        return 0
+    return int(seed)
 
 
 def _cma_options(config, max_cma_evals):
@@ -52,7 +32,7 @@ def _cma_options(config, max_cma_evals):
     options.setdefault("tolstagnation", int(max_cma_evals) + 1)
     options.setdefault("verb_disp", 0)
     options.setdefault("verbose", -9)
-    options["seed"] = _set_cma_seed(config)
+    options["seed"] = _resolve_cma_seed(config)
     return options
 
 
@@ -64,15 +44,7 @@ def _get_cma_classifier_budget(config, population_size):
     return 1 + int(config["num_geracoes"]) * int(population_size)
 
 
-def _candidate_info_from_detail(
-    resources,
-    candidate_detail,
-    reference_detail,
-    generation,
-    candidate_index,
-    cma_sigma,
-    cma_stop,
-):
+def _candidate_info_from_detail(resources, candidate_detail, reference_detail, generation, candidate_index, cma_sigma, cma_stop):
     return {
         "candidate_id": candidate_detail["candidate_id"],
         "descendente": candidate_detail["decoded_text"],
@@ -101,20 +73,27 @@ def cma_es(resources, config, solucao_inicial):
     if max_cma_classifier_evals <= 0:
         return historico_geracoes
 
-    embedding_inicial = frase_para_embedding(resources, solucao_inicial)
+    embedding_inicial = _sentence_embeddings(resources, solucao_inicial)[0][0]
     shape = tuple(embedding_inicial.shape)
     x0 = embedding_inicial.detach().cpu().numpy().reshape(-1).astype(np.float64)
     sigma0 = float(config["cma_es_sigma"])
     logger = RunLogger(resources, config, population_size, [solucao_inicial])
 
-    initial_detail = evaluate_and_log_embeddings(logger, generation=0, embeddings=[embedding_inicial[0]], operator_records=build_initial_operator_records(1),)[0]
+    initial_detail = evaluate_and_log_texts_with_embeddings(
+        logger,
+        generation=0,
+        texts=[solucao_inicial],
+        embeddings=[embedding_inicial],
+        operator_records=build_initial_operator_records(1),
+        embedding_source="initial_token_embedding",
+        text_source="direct_initialization",
+    )[0]
     best_detail = initial_detail
     last_generation_details = [initial_detail]
 
     try:
-        pycma = _load_pycma()
         options = _cma_options(config, max_cma_classifier_evals)
-        strategy = pycma.CMAEvolutionStrategy(x0, sigma0, options)
+        strategy = cma.CMAEvolutionStrategy(x0, sigma0, options)
         cma_population_size = int(strategy.popsize)
 
         with tqdm(total=max_cma_classifier_evals, initial=min(logger.evaluation_counter, max_cma_classifier_evals), desc="Running CMA-ES", unit="eval",) as progress:
@@ -132,7 +111,7 @@ def cma_es(resources, config, solucao_inicial):
                     break
 
                 candidato_embeddings = [
-                    torch.tensor(np.asarray(vetor_candidato).reshape(shape), dtype=torch.float32, device=resources.device,)[0]
+                    torch.tensor(np.asarray(vetor_candidato).reshape(shape), dtype=torch.float32, device=resources.device,)
                     for vetor_candidato in candidatos_avaliados
                 ]
                 operator_records = [
@@ -140,11 +119,15 @@ def cma_es(resources, config, solucao_inicial):
                         "parent_ids": [reference_detail["candidate_id"]],
                         "parent1_id": reference_detail["candidate_id"],
                         "parent2_id": None,
-                        "operator_used": "sampling",
+                        "operator_used": "cma_es_sampling",
                         "mutation_type": "cma_es_gaussian_sampling",
                         "crossover_type": None,
                         "mutation_applied": True,
                         "crossover_applied": False,
+                        "add_token_applied": False,
+                        "remove_token_applied": False,
+                        "num_tokens_added": 0,
+                        "num_tokens_removed": 0,
                         "embedding_source": "cma_sample",
                     }
                     for _ in candidatos_avaliados

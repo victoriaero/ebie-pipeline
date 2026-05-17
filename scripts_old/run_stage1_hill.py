@@ -13,7 +13,7 @@ HILL_BUDGET = 10_000
 STAGE1_STEP_SIZES = [0.05, 0.10, 0.20]
 STAGE1_NEIGHBORS = [1, 5, 10]
 STAGE1_FIXED_RESTART = False
-STAGE2_RESTART_OPTIONS = [False, True]
+STAGE2_RESTART_OPTIONS = [False]
 
 
 def load_config(config_path):
@@ -39,6 +39,7 @@ def generate_stage1_configs(base_config):
         config["algorithms"] = ["hill_climbing"]
         config["hill_climbing_neighbors"] = neighbors
         config["hill_climbing_restart"] = STAGE1_FIXED_RESTART
+        config["hill_climbing_sigma"] = step_size
         config["mutation_intensity_percent"] = step_size
         config["num_geracoes"] = HILL_BUDGET // neighbors
         config["classifier_evaluation_budget"] = HILL_BUDGET
@@ -54,6 +55,7 @@ def generate_stage2_configs(base_config, best_stage1):
         config["algorithms"] = ["hill_climbing"]
         config["hill_climbing_neighbors"] = best_stage1["hill_climbing_neighbors"]
         config["hill_climbing_restart"] = restart
+        config["hill_climbing_sigma"] = best_stage1["mutation_intensity_percent"]
         config["mutation_intensity_percent"] = best_stage1["mutation_intensity_percent"]
         config["num_geracoes"] = best_stage1["num_geracoes"]
         config["classifier_evaluation_budget"] = HILL_BUDGET
@@ -92,10 +94,7 @@ def run_configs(repo_root, stage_name, run_timestamp, configs):
         write_yaml(config_path, config)
 
         expected_total_evals = 1 + config["hill_climbing_neighbors"] * config["num_geracoes"]
-        if config["hill_climbing_restart"]:
-            expected_total_evals += config["num_geracoes"]
-
-        manifest.append({"run_timestamp":run_timestamp, "stage_name":stage_name, "experiment_name":experiment_name, "config_path":str(config_path), "output_file":config["output_file"], "parameters":{"algorithm":"hill_climbing", "mutation_intensity_percent":config["mutation_intensity_percent"], "hill_climbing_neighbors":config["hill_climbing_neighbors"], "num_geracoes":config["num_geracoes"], "hill_climbing_restart":config["hill_climbing_restart"], "classifier_evaluation_budget":config["classifier_evaluation_budget"], "expected_neighbor_evaluations":(config["hill_climbing_neighbors"] *config["num_geracoes"]), "expected_total_classifier_evaluations":expected_total_evals,},})
+        manifest.append({"run_timestamp":run_timestamp, "stage_name":stage_name, "experiment_name":experiment_name, "config_path":str(config_path), "output_file":config["output_file"], "parameters":{"algorithm":"hill_climbing", "mutation_intensity_percent":config["mutation_intensity_percent"], "hill_climbing_sigma":config["hill_climbing_sigma"], "hill_climbing_neighbors":config["hill_climbing_neighbors"], "num_geracoes":config["num_geracoes"], "hill_climbing_restart":config["hill_climbing_restart"], "classifier_evaluation_budget":config["classifier_evaluation_budget"], "expected_neighbor_evaluations":(config["hill_climbing_neighbors"] *config["num_geracoes"]), "expected_total_classifier_evaluations":expected_total_evals,},})
 
         subprocess.run([sys.executable, str(repo_root / "run_experiments.py"), "--config", str(config_path)], check=True, cwd=repo_root,)
 

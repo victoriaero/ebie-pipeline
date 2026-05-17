@@ -99,6 +99,9 @@ def get_experiment_seeds(config):
 
 
 def execute_single_run(algorithm_name, resources, config):
+    if algorithm_name == "random_search":
+        return random_search(resources, config, None)
+
     initial_population = generate_initial_population(resources, config, config["populacao_inicial"])
     if not initial_population:
         return {}
@@ -114,9 +117,6 @@ def execute_single_run(algorithm_name, resources, config):
 
     if algorithm_name == "cma_es":
         return cma_es(resources, config, random.choice(initial_population))
-
-    if algorithm_name == "random_search":
-        return random_search(resources, config, random.choice(initial_population))
 
     raise ValueError(f"Unsupported algorithm: {algorithm_name}")
 

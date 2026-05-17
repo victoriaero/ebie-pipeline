@@ -1,4 +1,5 @@
 import random
+import re
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -14,8 +15,9 @@ def _generate_random_token(resources, config):
         token_id = random.randrange(resources.tokenizer.vocab_size)
         if token_id in resources.tokenizer.all_special_ids:
             continue
-        token = resources.tokenizer.decode([token_id], skip_special_tokens=True).strip()
-        if token:
+        token = resources.tokenizer.decode([token_id], skip_special_tokens=True)
+        token_ids = resources.tokenizer.encode(token, add_special_tokens=False)
+        if token.strip() and token_ids == [token_id]:
             return token
 
 

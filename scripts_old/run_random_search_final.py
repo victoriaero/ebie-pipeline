@@ -15,6 +15,7 @@ FINAL_RANDOM_SEARCH_CLASSIFIER_EVALS = FINAL_POPULACAO_INICIAL * (
     FINAL_NUM_GERACOES + 1
 )
 FINAL_RANDOM_SEARCH_BATCH_SIZE = FINAL_POPULACAO_INICIAL
+FINAL_RANDOM_SEARCH_SIGMA = 0.1
 FINAL_NUM_RUNS = 30
 FINAL_SEED_START = 0
 
@@ -39,6 +40,7 @@ def build_experiment_name(config):
         "random_search_final"
         f"_evals{config['random_search_classifier_evals']}"
         f"_batch{config['random_search_batch_size']}"
+        f"_sigma{str(config['random_search_sigma']).replace('.', 'p')}"
         f"_runs{len(config['experiment_seeds'])}"
     )
 
@@ -48,11 +50,13 @@ def build_final_config(base_config, seeds, random_search_classifier_evals, rando
     config["algorithms"] = ["random_search"]
     config["populacao_inicial"] = FINAL_POPULACAO_INICIAL
     config["num_geracoes"] = FINAL_NUM_GERACOES
-    for key in ("prob_mutacao_embedding", "mutation_intensity_percent", "prob_add_random_token", "prob_remover_token",):
+    for key in ("prob_mutacao_embedding", "prob_add_random_token", "prob_remover_token",):
         config.pop(key, None)
+    config["random_search_sigma"] = FINAL_RANDOM_SEARCH_SIGMA
+    config["mutation_intensity_percent"] = FINAL_RANDOM_SEARCH_SIGMA
     config["random_search_classifier_evals"] = random_search_classifier_evals
     config["random_search_batch_size"] = random_search_batch_size
-    config["random_search_sampling_mode"] = "independent_initialization_samples"
+    config["random_search_sampling_mode"] = "gaussian_embedding_sampling_from_initial_population"
     config["experiment_seeds"] = seeds
     config["num_execucoes"] = len(seeds)
     config["classifier_evaluation_budget"] = random_search_classifier_evals
@@ -127,6 +131,7 @@ def main():
             "populacao_inicial": config["populacao_inicial"],
             "num_geracoes_reference": config["num_geracoes"],
             "random_search_sampling_mode": config["random_search_sampling_mode"],
+            "random_search_sigma": config["random_search_sigma"],
             "random_search_classifier_evals": config["random_search_classifier_evals"],
             "random_search_batch_size": config["random_search_batch_size"],
             "num_runs": len(seeds),

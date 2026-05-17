@@ -3,7 +3,13 @@ import random
 import torch
 from tqdm import tqdm
 
-from src.metrics import (RunLogger, build_initial_operator_records, evaluate_and_log_embeddings, population_to_embeddings,)
+from src.ebie import _sentence_embeddings
+from src.metrics import (
+    RunLogger,
+    build_initial_operator_records,
+    evaluate_and_log_embeddings,
+    evaluate_and_log_texts_with_embeddings,
+)
 
 
 def _get_crossover_prob(config):
@@ -49,15 +55,22 @@ def generate_child_embedding(config, parent1_embedding, parent2_embedding):
     return child, crossover_applied, crossover_alpha, mutation_applied
 
 
-def _candidate_info(
-    resources,
-    candidate_detail,
-    parent1_detail,
-    parent2_detail,
-    crossover_applied,
-    crossover_alpha,
-    mutation_applied,
-):
+def _initial_population_embeddings(resources, initial_population):
+    embeddings = [
+        _sentence_embeddings(resources, text)[0][0]
+        for text in initial_population
+    ]
+    embedding_shapes = {tuple(embedding.shape) for embedding in embeddings}
+    if len(embedding_shapes) != 1:
+        raise ValueError(
+            "RCGA requires a fixed-length initial representation. Use the same "
+            "number of RoBERTa content tokens for every initial individual, e.g. "
+            "initialization_mode: random_1_token."
+        )
+    return embeddings
+
+
+def _candidate_info(resources, candidate_detail, parent1_detail, parent2_detail, crossover_applied, crossover_alpha, mutation_applied):
     return {
         "candidate_id": candidate_detail["candidate_id"],
         "descendente": candidate_detail["decoded_text"],
@@ -88,10 +101,18 @@ def rcga(resources, config, initial_population, vocabulary=None):
     if not initial_population:
         return {}
 
-    population_embeddings = population_to_embeddings(resources, initial_population)
+    population_embeddings = _initial_population_embeddings(resources, initial_population)
     population_size = len(population_embeddings)
     logger = RunLogger(resources, config, population_size, initial_population)
-    population_details = evaluate_and_log_embeddings(logger, generation=0, embeddings=population_embeddings, operator_records=build_initial_operator_records(population_size),)
+    population_details = evaluate_and_log_texts_with_embeddings(
+        logger,
+        generation=0,
+        texts=initial_population,
+        embeddings=population_embeddings,
+        operator_records=build_initial_operator_records(population_size),
+        embedding_source="initial_token_embedding",
+        text_source="direct_initialization",
+    )
     fitness = [candidate["objective_value"] for candidate in population_details]
     tournament_size = config.get("tournament_size", 2)
     generation_history = {}

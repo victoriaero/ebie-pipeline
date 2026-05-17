@@ -5,7 +5,7 @@ import torch
 from tqdm import tqdm
 
 import src.decoder as decoder
-from src.metrics import (RunLogger, build_initial_operator_records, evaluate_and_log_decoded_embeddings,)
+from src.metrics import (RunLogger, build_initial_operator_records, evaluate_and_log_decoded_embeddings, evaluate_and_log_texts_with_embeddings,)
 
 
 def _tokenize_for_operator(resources, text):
@@ -115,7 +115,10 @@ def crossover_embeddings(config, pai1_embedding, pai2_embedding, pai1_indices=No
     token_idx_pai1 = random.choice(pai1_indices)
     token_idx_pai2 = random.choice(pai2_indices)
     num_dimensoes = pai1_embedding.shape[2]
-    swap_probability = config["max_percent_dimensions_crossover"]
+    swap_probability = config.get(
+        "crossover_dimension_swap_probability",
+        config.get("max_percent_dimensions_crossover", 0.02),
+    )
     mascara_troca = torch.rand(num_dimensoes, device=pai1_embedding.device) < swap_probability
 
     descendente_embedding[0, token_idx_pai1, mascara_troca] = pai2_embedding[0, token_idx_pai2, mascara_troca]
@@ -153,7 +156,7 @@ def algoritmo_genetico(resources, config, populacao):
         _sentence_embeddings(resources, text)[0][0]
         for text in populacao
     ]
-    populacao_details = evaluate_and_log_decoded_embeddings(logger, generation=0, texts=copy.deepcopy(populacao), embeddings=initial_embeddings, operator_records=build_initial_operator_records(len(populacao)),)
+    populacao_details = evaluate_and_log_texts_with_embeddings(logger, generation=0, texts=copy.deepcopy(populacao), embeddings=initial_embeddings, operator_records=build_initial_operator_records(len(populacao)), embedding_source="initial_token_embedding", text_source="direct_initialization",)
     fitness = [candidate["objective_value"] for candidate in populacao_details]
 
     for geracao in tqdm(range(config["num_geracoes"]), desc="Evolving"):
@@ -173,16 +176,11 @@ def algoritmo_genetico(resources, config, populacao):
             variation = gerar_variacao(resources, config, embeddings=descendente_embedding, content_indices=content_indices, return_details=True,)
             nova_frase = variation["descendente"]
             nova_embedding = variation["embedding"]
-            mutation_labels = []
+            mutation_type = None
             if variation["mutation_applied"]:
-                mutation_labels.append("embedding_scale_10_percent")
-            if variation["num_tokens_added"]:
-                mutation_labels.append("add_random_token")
-            if variation["num_tokens_removed"]:
-                mutation_labels.append("remove_token")
-            any_variation = bool(mutation_labels)
+                mutation_type = "embedding_scale_10_percent"
 
-            parent_records.append({"pai1_idx":pai1_idx, "pai2_idx":pai2_idx, "parent_ids":[pai1_detail["candidate_id"], pai2_detail["candidate_id"]], "parent1_id":pai1_detail["candidate_id"], "parent2_id":pai2_detail["candidate_id"], "operator_used":"variation", "mutation_type":"+".join(mutation_labels) if mutation_labels else None, "crossover_type":("ebie_single_token_dimension_crossover" if crossover_aplicado else None), "mutation_applied":any_variation, "crossover_applied":crossover_aplicado, "num_tokens_added":variation["num_tokens_added"], "num_tokens_removed":variation["num_tokens_removed"],})
+            parent_records.append({"pai1_idx":pai1_idx, "pai2_idx":pai2_idx, "parent_ids":[pai1_detail["candidate_id"], pai2_detail["candidate_id"]], "parent1_id":pai1_detail["candidate_id"], "parent2_id":pai2_detail["candidate_id"], "operator_used":"variation", "mutation_type":mutation_type, "crossover_type":("ebie_single_token_dimension_crossover" if crossover_aplicado else None), "mutation_applied":variation["mutation_applied"], "crossover_applied":crossover_aplicado, "add_token_applied":variation["num_tokens_added"] > 0, "remove_token_applied":variation["num_tokens_removed"] > 0, "num_tokens_added":variation["num_tokens_added"], "num_tokens_removed":variation["num_tokens_removed"],})
             nova_populacao.append(nova_frase)
             parent_records[-1]["embedding"] = nova_embedding
 

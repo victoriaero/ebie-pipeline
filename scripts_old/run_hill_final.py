@@ -13,7 +13,7 @@ FINAL_POPULACAO_INICIAL = 50
 FINAL_NUM_GERACOES_REFERENCE = 400
 FINAL_HILL_NEIGHBORS = 1
 FINAL_HILL_STEP_SIZE = 0.2
-FINAL_HILL_RESTART = True
+FINAL_HILL_RESTART = False
 FINAL_MAX_EVALUATIONS = FINAL_POPULACAO_INICIAL * (
     FINAL_NUM_GERACOES_REFERENCE + 1
 )
@@ -54,6 +54,7 @@ def build_final_config(base_config, seeds, max_evaluations):
     config["num_geracoes_reference"] = FINAL_NUM_GERACOES_REFERENCE
     config["hill_climbing_neighbors"] = FINAL_HILL_NEIGHBORS
     config["hill_climbing_restart"] = FINAL_HILL_RESTART
+    config["hill_climbing_sigma"] = FINAL_HILL_STEP_SIZE
     config["mutation_intensity_percent"] = FINAL_HILL_STEP_SIZE
     config["max_evaluations"] = max_evaluations
     config["experiment_seeds"] = seeds
